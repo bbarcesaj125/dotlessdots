@@ -1,0 +1,15 @@
+#!/bin/sh
+
+# Startup apps
+mpd
+/usr/bin/lxpolkit &
+nm-applet &
+sh ~/.fehbg &
+sh ~/.scripts/i3-low-battery.sh &
+compton --config ~/.config/compton.conf -b &
+(sleep 1s && pasystray) &
+(sleep 4s && parcellite) &
+(sleep 5s && dropbox) &
+(sleep 5s && tint2) & 
+(sleep 30s && i3-msg '[ class="Tint2" ] move scratchpad' > /dev/null 2>&1) &
+

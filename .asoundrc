@@ -1,0 +1,82 @@
+#pcm.bs2b {
+#    type ladspa
+#
+#    #slave.pcm "plughw:0,0"
+#	#slave.pcm "plug:dmix"
+#    slave.pcm "gverb"
+#
+#    path "/usr/lib/ladspa"
+#
+#    plugins [
+#    {
+#        label bs2b
+#        id 4221
+#        input {
+#            # The following setting is just an example, edit to your own taste:
+#            # bands: 50hz, 100hz, 156hz, 220hz, 311hz, 440hz, 622hz, 880hz, 1250hz, 1750hz, 25000hz,
+#            # 50000hz, 10000hz, 20000hz
+#            controls [ 650 9.5 ]
+#            }
+#        }
+#    ]
+#}
+#
+#pcm.gverb {
+#	type ladspa
+#
+#	slave.pcm "plug:dmix"
+#
+#	path "/usr/lib/ladspa"
+#
+#	plugins [
+#	{
+#		label gverb
+#		id 1216
+#		input {
+#			#controls [ 50 1.5 0.1 0.75 -1.5 -10 -20 ] # Bright, Small Hall
+#			#controls [ 40 20 0.5 0.75 0 -10 -30 ] # Nice Hall Effect
+#			controls [ 40 4 0.9 0.75 0 -22 -28 ] # Quick Fix
+#
+#			}
+#		}
+#	]
+#}
+#
+##pcm.eq {
+##    type ladspa
+##
+##    # The output from the EQ can either go direct to a hardware device
+##    # (if you have a hardware mixer, e.g. SBLive/Audigy) or it can go
+##    # to the software mixer shown here.
+##    #slave.pcm "plughw:0,0"
+##    slave.pcm "plug:dmix"
+##
+##    # Sometimes you may need to specify the path to the plugins,
+##    # especially if you have just installed them.  Once you have logged
+##    # out/restarted this should not be necessary, but if you get errors
+##    # about being unable to find plugins, try uncommenting this.
+##    path "/usr/lib/ladspa"
+##
+##    plugins [
+##    {
+##        label mbeq
+##        id 1197
+##        input {
+##            # The following setting is just an example, edit to your own taste:
+##            # bands: 50hz, 100hz, 156hz, 220hz, 311hz, 440hz, 622hz, 880hz, 1250hz, 1750hz, 25000hz,
+##            # 50000hz, 10000hz, 20000hz
+##            controls [17 -12 9 -12 -6 -6 -4 -9 -4 -2 -3 -9 -3 9 11]
+##            }
+##        }
+##    ]
+##}
+#
+##pcm.wine {
+##	type plug
+##	slave.pcm "plug:dmix"
+##}
+#
+#pcm.!default {
+#	type plug
+#	slave.pcm "bs2b"
+#} 
