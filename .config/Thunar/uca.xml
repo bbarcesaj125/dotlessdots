@@ -1,0 +1,22 @@
+<?xml encoding="UTF-8" version="1.0"?>
+<actions>
+<action>
+	<icon>utilities-terminal</icon>
+	<name>Open Terminal Here</name>
+	<unique-id>1414934743872933-1</unique-id>
+	<command>exo-open --working-directory %f --launch TerminalEmulator</command>
+	<description>Example for a custom action</description>
+	<patterns>*</patterns>
+	<startup-notify/>
+	<directories/>
+</action>
+<action>
+	<icon>mpv</icon>
+	<name>Mpv With Optimus</name>
+	<unique-id>1533329812550677-1</unique-id>
+	<command>primusrun mpv %f</command>
+	<description>Play video with Optirun</description>
+	<patterns>*</patterns>
+	<video-files/>
+</action>
+</actions>

@@ -1,0 +1,88 @@
+" This is my modest Vim Config
+
+" RunTime Path Manipulation
+call pathogen#infect()
+call pathogen#helptags()
+
+" Set no-compatible mode
+set nocompatible
+
+" Enable enhanced command-line completion
+set wildmenu
+set wildmode=list:longest,full
+
+" Change the mapleader to ,
+let mapleader=","
+
+" Vimrc quick edit
+nmap <silent> <leader>ev :e $MYVIMRC<CR>
+nmap <silent> <leader>sv :so $MYVIMRC<CR>
+
+" Key bindings
+map  <C-l> :tabn<CR> " Ctrl+L to move to the next tab
+map  <C-h> :tabp<CR> " Ctrl+H to move to the previous tab
+map  <C-n> :tabnew<CR> " Ctrl+N to create a new tab
+
+" Some random options
+set hidden " Hide buffers instead of closing them
+set nowrap        " Don't wrap lines
+set tabstop=4     " A tab is four spaces
+set backspace=indent,eol,start " Allow backspacing over everything in insert mode
+set autoindent    " Always set autoindenting on
+set copyindent    " Copy the previous indentation on autoindenting
+set number        " Always show line numbers
+set shiftwidth=4  " Number of spaces to use for autoindenting
+set showmatch     " Set show matching parenthesis
+set history=1000  " Remember more commands
+set undolevels=1000 " Remember more undo moves
+set title " Change the terminal's title
+set nobackup " Self explanatory
+set noswapfile " Self explanatory
+set autochdir " Set working directory to the current file
+set ruler " Activate a permanent ruler
+
+" Searching options
+set ignorecase    " Ignore case when searching
+set smartcase     " Ignore case if search pattern is all lowercase, case-sensitive otherwise
+set hlsearch      " Highlight search terms
+set incsearch     " Show search matches as you type
+
+" Enable filetype plugins and indention
+filetype on
+filetype plugin indent on
+
+" Enable JQuery/Javascript snippets for HTML files (Snipmate)
+let g:snipMate = {}
+let g:snipMate.scope_aliases = {} 
+let g:snipMate.scope_aliases['html'] = 'javascript,javascript-jquery'
+
+" Enable 256 colors support
+set t_Co=256
+
+" Disable BCE (Background Color Erase)
+if &term =~ '256color'
+	set t_ut=
+endif
+
+" Enable syntax highlighting
+if &t_Co >= 256 || has("gui_running")
+   colorscheme molokai
+   syntax on
+endif
+
+" NERDTree autostart/Toggle
+" autocmd vimenter * NERDTree " Disabled
+nmap <silent> <F4> :NERDTreeToggle<CR>
+
+" Switch to paste mode
+set pastetoggle=<F2>
+
+" Enable PowerLine/Airtime
+" let g:airline_powerline_fonts = 1
+let g:Powerline_symbols = 'fancy'
+
+" Set statusline
+set laststatus=2
+
+" Enable Italic Comments
+highlight Comment cterm=italic

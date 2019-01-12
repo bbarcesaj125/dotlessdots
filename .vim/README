@@ -1,0 +1,14 @@
+Installation instructions
+
+    git clone git://github.com/bbarcesaj125/vim-dot.git ~/.vim
+
+Creating Symbolic links
+
+    ln -s ~/.vim/vimrc ~/.vimrc
+
+Installing plugins as submodules
+
+	cd ~/.vim
+	git submodule add http://github.com/someuser/someplugin.git bundle/someplugin
+	git add .
+	git commit -m "Install someplugin.vim bundle as a submodule."

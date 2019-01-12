@@ -1,0 +1,9 @@
+[NotebookList]
+Default=~/Dropbox/MyZimNoteBook/GTD
+1=~/Dropbox/MyZimNoteBook/GTD
+
+[Notebook 1]
+uri=~/Dropbox/MyZimNoteBook/GTD
+name=Yusuf
+interwiki=None
+icon=None
