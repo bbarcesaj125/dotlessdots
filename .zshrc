@@ -12,7 +12,7 @@ PROMPT="%{$fg[red]%}%n%{$reset_color%}@%{$fg[blue]%}%m %{$fg_no_bold[yellow]%}%1
 RPROMPT="[%{$fg_no_bold[yellow]%}%?%{$reset_color%}]"
 
 # ZSH theme 
-ZSH_THEME="darkblood"
+ZSH_THEME="agnoster"
 
 # Store last used commands
 HISTFILE=~/.zhistory
@@ -151,3 +151,4 @@ export WINEARCH=win32
 
 # Source Zsh
 source $ZSH/oh-my-zsh.sh
+source /usr/share/zsh-theme-powerlevel9k/powerlevel9k.zsh-theme
