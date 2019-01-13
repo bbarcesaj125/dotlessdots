@@ -1,3 +1,0 @@
-#!/bin/sh
-(sleep 5s && i3-msg '[class="Tint2"] move scratchpad' > /dev/null 2>&1) &
-
