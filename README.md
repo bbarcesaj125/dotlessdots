@@ -24,4 +24,4 @@ I mainly use a tiling window manager (i.e., i3) in conjunction with a combinatio
 They say that an image is worth a thousand words, so without further due, here is how my typical desktop looks like:
 
 ![Screenshot]
-(https://github.com/bbarcesaj125/dotlessdots/blob/master/Screenshot.png)
+(https://raw.githubusercontent.com/bbarcesaj125/dotlessdots/master/Screenshot.png)
