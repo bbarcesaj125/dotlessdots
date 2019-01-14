@@ -47,17 +47,8 @@ alias pRs="sudo pacman -Rs"
 alias Yu="yaourt -Syua"
 # Commonly edited dotfiles {{{
 alias vXres="vim ~/.Xresources"
-# Openbox rc.xml quick edit {{{
-alias vobrc="vim ~/.config/openbox/rc.xml"
-alias obrec="openbox --reconfigure"
 # Vimdiff sudoedit
 alias vdiffsudit="SUDO_EDITOR=vimdiff sudoedit"
-# Synfig Gtk Fix
-alias synfag="GTK_THEME=Breeze synfigstudio"
-# Ubuntu aliases {{{
-#alias ppa='sudo add-apt-repository'
-#alias au='sudo apt-get update'
-#alias ai='sudo apt-get install'
 
 # Functions
 # Sopcast helper
@@ -69,8 +60,8 @@ mpvsop () {
 	mpv http://localhost:55051
 }
 
-# MangaFox Downloader
-foxme () {
+# Kissmanga Downloader
+kissme () {
     DIR1=$HOME/Documents/Documents/Manga/mangaDownload/Links/
     DIR2=$HOME/Documents/Documents/Manga/mangaDownload/Temp/
     DIR3=$HOME/Documents/Documents/Manga/

@@ -17,11 +17,11 @@ URxvt.internalBorder: 0
 URxvt.externalBorder: 0
 
 ! Font declaration
-URxvt.font: xft:Roboto Mono for Powerline:pixelsize=10
+URxvt.font: xft: Roboto Mono for Powerline:pixelsize=12
 !URxvt.boldFont: xft: Roboto Mono for Powerline:pixelsize=12:bold
 !URxvt.italicFont: xft:Roboto Mono for Powerline:pixelsize=12:italic
 !URxvt.bolditalicFont: xft:Roboto Mono for Powerline:pixelsize=12:bold:italic
-URxvt*letterSpace: -1
+!URxvt*letterSpace: -1
 
 ! Clickable URLs + Tab support (disabled for now)
 URxvt.perl-ext-common: default,matcher
