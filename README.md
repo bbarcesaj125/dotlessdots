@@ -17,10 +17,10 @@ I mainly use a tiling window manager (i.e., i3) in conjunction with a combinatio
 + dunst
 + GIMP, Synfig, Inkscape
 + zsh with custom functions
-+ and many little scripts I wrote for different purposes using several languages (e.g., bash, python, JavaScript, etc.)
++ and many little scripts I wrote for different purposes using several languages (e.g., Bash, Python, JavaScript, etc.)
 
 ## Screenshot
 
 They say that an image is worth a thousand words, so without further due, here is how my typical desktop looks like:
 ![Screenshot]
-(link)
+(https://github.com/bbarcesaj125/dotlessdots/blob/master/Screenshot.png)
