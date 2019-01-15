@@ -1,0 +1,43 @@
+# $Id$
+# Maintainer: Alexander F. Rødseth <xyproto@archlinux.org>
+# Contributor: Blue Peppers <bluepeppers@archlinux.us>
+# Contributor: Stefan Husmann <stefan-husmann@t-online.de>
+# Contributor: Yannick LM <LMyannicklm1337@gmail.com>
+
+pkgname=tint2
+pkgver=16.6.1
+pkgrel=1
+pkgdesc='Basic, good-looking task manager for WMs'
+groups=('modified')
+arch=('x86_64')
+url='https://gitlab.com/o9000/tint2'
+license=('GPL2')
+depends=('gtk2' 'imlib2' 'startup-notification')
+makedepends=('cmake' 'git' 'ninja' 'setconf' 'startup-notification')
+source=(git+https://gitlab.com/o9000/tint2.git#tag=$pkgver
+        change_window_type.patch)
+
+prepare() {
+  setconf $pkgname/get_version.sh VERSION="$pkgver"
+  cd $pkgname
+  patch -Np1 -i $srcdir/change_window_type.patch
+}
+
+build() {
+  mkdir -p build
+  cd build
+  cmake ../$pkgname \
+    -DCMAKE_INSTALL_PREFIX=/usr \
+    -DENABLE_TINT2CONF=1 \
+    -GNinja
+  ninja
+}
+
+package() {
+  DESTDIR="$pkgdir" ninja -C build install
+}
+
+# getver: gitlab.com/o9000/tint2/raw/master/ChangeLog
+# vim: ts=2 sw=2 et:
+md5sums=('SKIP'
+         '2d972d5dc34be28fda13d1a7e4385d00')

@@ -1,0 +1,12 @@
+diff -ura -x .git tint2/src/panel.c tint2.new/src/panel.c
+--- tint2/src/panel.c	2018-11-22 20:56:35.986850229 +0100
++++ tint2.new/src/panel.c	2018-11-22 20:58:35.208219809 +0100
+@@ -907,7 +907,7 @@
+                     XA_ATOM,
+                     32,
+                     PropModeReplace,
+-                    (unsigned char *)&server.atom._NET_WM_WINDOW_TYPE_DOCK,
++                    (unsigned char *)&server.atom._NET_WM_WINDOW_TYPE_NORMAL,
+                     1);
+ 
+     place_panel_all_desktops(p);
