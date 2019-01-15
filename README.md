@@ -8,7 +8,7 @@ I mainly use a tiling window manager (i.e., i3) in conjunction with a combinatio
 
 + i3
 + i3bar with conky
-+ a patched Tint2 version as a detached tray icons application
++ a patched Tint2 version as a detached tray area/bar which can be toggled on and off
 + vim 
 + dmenu
 + mpd with ncmpcpp
