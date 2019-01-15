@@ -1,6 +1,6 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs');
-const cliArgs = process.argv.slice(2)
+const cliArgs = process.argv.slice(2);
 const chapterUrl = cliArgs[0];
 const chapterRange = parseInt(cliArgs[1]);
 const regExMangaUrl = new RegExp('(^.*)(?<=Manga\/.*\/)', 'g');
