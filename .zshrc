@@ -49,6 +49,10 @@ alias Yu="yaourt -Syua"
 alias vXres="vim ~/.Xresources"
 # Vimdiff sudoedit
 alias vdiffsudit="SUDO_EDITOR=vimdiff sudoedit"
+# Git aliases
+alias gitpush="git push origin master"
+alias gitadd="git add -f"
+alias gitcommit="git commit -a"
 
 # Functions
 # Sopcast helper
