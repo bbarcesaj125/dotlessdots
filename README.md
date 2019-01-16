@@ -24,3 +24,11 @@ I mainly use a tiling window manager (i.e., i3) in conjunction with a combinatio
 They say that an image is worth a thousand words, so without further due, here is how my typical desktop looks like:
 
 ![Screenshot](https://raw.githubusercontent.com/bbarcesaj125/dotlessdots/master/Screenshot.png)
+
+## Things I might try in the future
+
+This is a loose todo list that contains things I am strongly interested in. 
+
+- [ ] Switch to bspwm
+- [ ] Install pywal
+- [ ] Switch to Neovim
