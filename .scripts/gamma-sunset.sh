@@ -1,7 +1,9 @@
 #!/bin/bash
 
 # This script changes the xgamma settings based on the sunrise and the sunset times in your city.
-# At sunset, the script will automatically change xgamma settings so that the screen will have a reddish tone (i.e., think RedShift), and will change them back to their default value at sunrise.
+# At sunset, the script will automatically change xgamma settings so that the screen
+# will have a reddish tone (i.e., think RedShift),
+# and will change them back to their default values at sunrise.
 
 
 DATE=$(date +"%s")
