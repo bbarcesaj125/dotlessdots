@@ -147,13 +147,14 @@ workspace_auto_back_and_forth yes
 
 # define workspaces
 set $tag1 "α: www"
-set $tag2 "β: zim"
-set $tag3 "γ: video"
-set $tag4 "δ: manga"
-set $tag5 "ε: term"
-set $tag6 "ζ: fm"
-set $tag7 "η: gimp"
-set $tag8 "θ: misc"
+set $tag2 "β: www1"
+set $tag3 "γ: zim"
+set $tag4 "δ: video"
+set $tag5 "ε: manga"
+set $tag6 "ζ: term"
+set $tag7 "η: fm"
+set $tag8 "θ: gimp"
+set $tag9 "ι: misc"
 
 # switch to workspace
 bindsym $mod+1 workspace $tag1
@@ -164,7 +165,7 @@ bindsym $mod+5 workspace $tag5
 bindsym $mod+6 workspace $tag6
 bindsym $mod+7 workspace $tag7
 bindsym $mod+8 workspace $tag8
-bindsym $mod+9 workspace 9
+bindsym $mod+9 workspace $tag9
 bindsym $mod+0 workspace 10
 
 # move focused container to workspace
@@ -176,22 +177,23 @@ bindsym $mod+Shift+5 move container to workspace $tag5
 bindsym $mod+Shift+6 move container to workspace $tag6
 bindsym $mod+Shift+7 move container to workspace $tag7
 bindsym $mod+Shift+8 move container to workspace $tag8
-bindsym $mod+Shift+9 move container to workspace 9
+bindsym $mod+Shift+9 move container to workspace $tag9
 bindsym $mod+Shift+0 move container to workspace 10
 
 # assign apps to workspaces
-assign [class="google-chrome|Firefox"] $tag1
+assign [class="google-chrome"] $tag1
+assign [class="Firefox"] $tag2
 for_window [class="google-chrome|Firefox"] border 1pixel
-assign [class="Zim"] $tag2
+assign [class="Zim"] $tag3
 for_window [class="Zim"] focus
-assign [class="mpv"] $tag3
-assign [class="MComix"] $tag4
+assign [class="mpv"] $tag4
+assign [class="MComix"] $tag5
 for_window [class="MComix"] focus
-assign [class="^URxvt$" instance="^mpd$"] $tag5
-assign [class="Thunar"] $tag6
+assign [class="^URxvt$" instance="^mpd$"] $tag6
+assign [class="Thunar"] $tag7
 for_window [class="Thunar"] focus
-assign [class="Gimp"] $tag7
-assign [class="VirtualBox" ] $tag8
+assign [class="Gimp"] $tag8
+assign [class="VirtualBox" ] $tag9
 
 # scratchpad ----
 # make the currently focused window a scratchpad
@@ -214,16 +216,16 @@ mode "resize" {
         # Pressing right will grow the window’s width.
         # Pressing up will shrink the window’s height.
         # Pressing down will grow the window’s height.
-        bindsym j resize shrink width 10 px or 10 ppt
-        bindsym k resize grow height 10 px or 10 ppt
-        bindsym l resize shrink height 10 px or 10 ppt
-        bindsym semicolon resize grow width 10 px or 10 ppt
+        bindsym j resize shrink width 2 px or 2 ppt
+        bindsym k resize grow height 2 px or 2 ppt
+        bindsym l resize shrink height 2 px or 2 ppt
+        bindsym semicolon resize grow width 2 px or 2 ppt
 
         # same bindings, but for the arrow keys
-        bindsym Left resize shrink width 10 px or 10 ppt
-        bindsym Down resize grow height 10 px or 10 ppt
-        bindsym Up resize shrink height 10 px or 10 ppt
-        bindsym Right resize grow width 10 px or 10 ppt
+        bindsym Left resize shrink width 2 px or 2 ppt
+        bindsym Down resize grow height 2 px or 2 ppt
+        bindsym Up resize shrink height 2 px or 2 ppt
+        bindsym Right resize grow width 2 px or 2 ppt
 
         # back to normal: Enter or Escape
         bindsym Return mode "default"
