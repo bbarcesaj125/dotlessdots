@@ -66,39 +66,40 @@ mpvsop () {
 
 # Kissmanga Downloader
 kissme () {
-    DIR1=$HOME/Documents/Documents/Manga/mangaDownload/Links/
-    DIR2=$HOME/Documents/Documents/Manga/mangaDownload/Temp/
-    DIR3=$HOME/Documents/Documents/Manga/
+    DIR1="$HOME/Documents/Documents/Manga/mangaDownload/Links/"
+    DIR2="$HOME/Documents/Documents/Manga/mangaDownload/Temp/"
+    DIR3="$HOME/Documents/Documents/Manga/"
+    COUNTER=0
+    LEADING_ZERO="00"
 
-	cd $DIR1
+	cd "$DIR1"
 	for file in ./*.txt
 	do
-		echo $file
-		mkdir ../Temp/${"$(basename -- $file)"%.*}
-		wget --random-wait -i $file -P ../Temp/${"$(basename -- $file)"%.*}
+		echo "$file"
+		mkdir ../Temp/"${"$(basename -- "$file")"%.*}"
+		echo "${"$(basename -- "$file")"%.*}"
+
+		#wget --random-wait -i $file -P ../Temp/${"$(basename -- $file)"%.*}
+		while read link;
+		do
+			EXT="${link##*.}"
+			((COUNTER++))
+			wget --random-wait "$link" -O ../Temp/"${"$(basename -- "$file")"%.*}"/"$LEADING_ZERO""$COUNTER"."${EXT%*}"
+		done < "$file"
+		COUNTER=0
 	done
 
 	rm ./*.txt
 
-	cd $DIR2
-	zip -r $1.cbz ./
-	mv ./*.cbz $DIR3
-	rm -r $DIR2*/
-
-#	mkdir $1
-#	curl -o coco.html $2
-#	#find . -maxdepth 1 -not -name "*.txt" -type f -exec mv '{}' '{}'.html \;
-#	grep -oh 'http://2.bp.blogspot.com/.*3000' *.html >urls.txt
-#	sort -u urls.txt | wget -i- --random-wait
-#	for file in $( find -name "*.jpg\?*" -o -name "*.png\?*") ; do mv "$file" "${file%%\?*}"; done 
-#	mv *.jpg ./$1
-#	mv *.png ./$1
-#	rm *.html
+	cd "$DIR2"
+	zip -r "$1".cbz ./
+	mv ./*.cbz "$DIR3"
+	rm -r "$DIR2"*/
 }
 
 nodewrapper () {
-	echo $1
-	node $HOME/.scripts/mangaScrapper.js "$1" $2
+	echo "$1"
+	node $HOME/.scripts/mangaScrapper.js "$1" "$2"
 }
 
 # Zip directories into individual zip files
