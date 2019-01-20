@@ -10,7 +10,7 @@ const mangaName = regExMangaName.exec(chapterUrl)[0];
 const regExChapterName = new RegExp('(?<=' + mangaName + '\/)(.*?)(?=\\?)');
 
 (async () => {
-	const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox']});
+	const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox'], headless: false});
 	const page = await browser.newPage();
 	await page.goto(mangaUrl);
 	await page.waitForSelector('table.listing');
@@ -27,8 +27,10 @@ const regExChapterName = new RegExp('(?<=' + mangaName + '\/)(.*?)(?=\\?)');
 		console.log('The current chapter\'s link is: ' + chaptersToDownload[i]);
 		chapterName = regExChapterName.exec(chaptersToDownload[i])[0] + '_' + mangaName;
 		console.log('The current chapter\'s name is: ' + chapterName);
-		const page = await browser.newPage();
-		await page.goto(chaptersToDownload[i]);
+		// const page = await browser.newPage();
+		await page.goto(chaptersToDownload[i], {
+			timeout: 3000000
+		});
 		await page.waitForSelector('div#divImage');
 		var imageLinks = await page.evaluate(() => [...document.querySelectorAll('#divImage > p > img')].map(element => element.getAttribute('src')));  
 		console.log('The links of the current chapter\'s images are: ' + '\n', imageLinks);
@@ -40,6 +42,7 @@ const regExChapterName = new RegExp('(?<=' + mangaName + '\/)(.*?)(?=\\?)');
 
 			console.log('The file was saved as ' + chapterName + '.txt');
 		});
+		await page.waitFor(4000);
 	};
 
 	await browser.close();
