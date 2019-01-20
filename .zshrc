@@ -82,7 +82,7 @@ kissme () {
 		while IFS="" read -r link || [ -n "$link" ]
 		do
 			EXT="${link##*.}"
-			wget --random-wait "$link" -O ../Temp/"${"$(basename -- "$file")"%.*}"/"$LEADING_ZERO""$COUNTER"."$EXT"
+			wget --random-wait "$link" -O ../Temp/"${"$(basename -- "$file")"%.*}"/"$LEADING_ZERO""$COUNTER"."$EXT" 2>&1 | tee -a wgetlog.log
 			((COUNTER++))
 		done <<< "$(sed "s/\r$//" < "$file")" # See https://stackoverflow.com/a/1521498 & https://stackoverflow.com/a/51549655
 		COUNTER=0
