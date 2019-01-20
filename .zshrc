@@ -79,13 +79,12 @@ kissme () {
 		mkdir ../Temp/"${"$(basename -- "$file")"%.*}"
 		echo "${"$(basename -- "$file")"%.*}"
 
-		#wget --random-wait -i $file -P ../Temp/${"$(basename -- $file)"%.*}
-		while read link;
+		while IFS="" read -r link || [ -n "$link" ]
 		do
 			EXT="${link##*.}"
+			wget --random-wait "$link" -O ../Temp/"${"$(basename -- "$file")"%.*}"/"$LEADING_ZERO""$COUNTER"."$EXT"
 			((COUNTER++))
-			wget --random-wait "$link" -O ../Temp/"${"$(basename -- "$file")"%.*}"/"$LEADING_ZERO""$COUNTER"."${EXT%*}"
-		done < "$file"
+		done <<< "$(sed "s/\r$//" < "$file")" # See https://stackoverflow.com/a/1521498 & https://stackoverflow.com/a/51549655
 		COUNTER=0
 	done
 
@@ -95,6 +94,7 @@ kissme () {
 	zip -r "$1".cbz ./
 	mv ./*.cbz "$DIR3"
 	rm -r "$DIR2"*/
+	cd ~
 }
 
 nodewrapper () {
