@@ -26,7 +26,7 @@ var imageCount = 0;
 	console.log('We will download the following chapters: ' + '\n', chaptersToDownload);
 	for(var i = 0; i < chaptersToDownload.length; i++){
 		console.log('The current chapter\'s link is: ' + chaptersToDownload[i]);
-		chapterName = regExChapterName.exec(chaptersToDownload[i])[0] + '_' + mangaName;
+		chapterName = 'pre' + i + '-' + regExChapterName.exec(chaptersToDownload[i])[0] + '_' + mangaName;
 		console.log('The current chapter\'s name is: ' + chapterName);
 		// const page = await browser.newPage();
 		await page.goto(chaptersToDownload[i]);

@@ -92,8 +92,8 @@ kissme () {
 	rm ./*.txt
 
 	cd "$DIR2"
-	zip -r "$1".cbz ./
-	mv ./*.cbz "$DIR3"
+	tar cfv "$1".cbt */
+	mv ./*.cbt "$DIR3"
 	rm -r "$DIR2"*/
 	cd ~
 }
