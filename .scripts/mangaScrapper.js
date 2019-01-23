@@ -8,6 +8,7 @@ const regExMangaName = new RegExp('(?<=Manga\/)(.*?)(?=\/)', 'g');
 const mangaUrl = regExMangaUrl.exec(chapterUrl)[0]; 
 const mangaName = regExMangaName.exec(chapterUrl)[0];
 const regExChapterName = new RegExp('(?<=' + mangaName + '\/)(.*?)(?=\\?)');
+var imageCount = 0;
 
 (async () => {
 	const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox']});
@@ -28,11 +29,10 @@ const regExChapterName = new RegExp('(?<=' + mangaName + '\/)(.*?)(?=\\?)');
 		chapterName = regExChapterName.exec(chaptersToDownload[i])[0] + '_' + mangaName;
 		console.log('The current chapter\'s name is: ' + chapterName);
 		// const page = await browser.newPage();
-		await page.goto(chaptersToDownload[i], {
-			timeout: 3000000
-		});
+		await page.goto(chaptersToDownload[i]);
 		await page.waitForSelector('div#divImage');
 		var imageLinks = await page.evaluate(() => [...document.querySelectorAll('#divImage > p > img')].map(element => element.getAttribute('src')));  
+		imageCount += imageLinks.length;
 		console.log('The links of the current chapter\'s images are: ' + '\n', imageLinks);
 		imageLinksSeparated = imageLinks.join('\r\n');
 		fs.writeFile('/home/archyusuf/Documents/Documents/Manga/mangaDownload/Links/' + chapterName + '.txt', imageLinksSeparated, function(err) {
@@ -42,8 +42,8 @@ const regExChapterName = new RegExp('(?<=' + mangaName + '\/)(.*?)(?=\\?)');
 
 			console.log('The file was saved as ' + chapterName + '.txt');
 		});
-		await page.waitFor(4000);
 	};
+	console.log('The total number of images is: ' + imageCount);
 
 	await browser.close();
 })();
