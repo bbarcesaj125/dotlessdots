@@ -66,11 +66,11 @@ mpvsop () {
 
 # Kissmanga Downloader
 kissme () {
-    DIR1="$HOME/Documents/Documents/Manga/mangaDownload/Links/"
-    DIR2="$HOME/Documents/Documents/Manga/mangaDownload/Temp/"
-    DIR3="$HOME/Documents/Documents/Manga/"
-    COUNTER=0
-    LEADING_ZERO="00"
+	DIR1="$HOME/Documents/Documents/Manga/mangaDownload/Links/"
+	DIR2="$HOME/Documents/Documents/Manga/mangaDownload/Temp/"
+	DIR3="$HOME/Documents/Documents/Manga/"
+	COUNTER=0
+	LEADING_ZERO="00"
 
 	cd "$DIR1"
 	for file in ./*.txt
@@ -99,8 +99,11 @@ kissme () {
 }
 
 nodewrapper () {
+	DIR="$HOME/Documents/Documents/Manga/mangaDownload/Links/"
+	cd "$DIR"
 	echo "$1"
-	node $HOME/.scripts/mangaScrapper.js "$1" "$2"
+	node $HOME/.scripts/mangaScrapper.js "$1" "$2" 2>&1 | tee -a nodelog.log
+	cd ~
 }
 
 # Zip directories into individual zip files
