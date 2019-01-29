@@ -44,8 +44,8 @@ bindsym mod4+d exec --no-startup-id dmenu_run -i -b -nf 'gray' -sb '#35d67d' -nb
 bindsym Control+mod1+l exec --no-startup-id i3lock -c 222222
 bindsym Print exec scrot ~/Pictures/ScrotShots/%Y-%m-%d-%T-screenshot.png -d 3
 bindsym mod4+t exec thunar
-bindsym mod4+c exec google-chrome-stable
-bindsym mod4+o exec primusrun google-chrome-stable
+bindsym mod4+c exec chromium
+bindsym mod4+o exec primusrun chromium
 bindsym mod4+f exec firefox
 bindsym mod4+z exec zim 
 bindsym mod4+m exec mcomix
@@ -181,9 +181,10 @@ bindsym $mod+Shift+9 move container to workspace $tag9
 bindsym $mod+Shift+0 move container to workspace 10
 
 # assign apps to workspaces
-assign [class="google-chrome"] $tag1
+assign [class="Chromium"] $tag1
 assign [class="Firefox"] $tag2
-for_window [class="google-chrome|Firefox"] border 1pixel
+assign [class="qutebrowser"] $tag2
+for_window [class="Chromium|Firefox"] border 1pixel
 assign [class="Zim"] $tag3
 for_window [class="Zim"] focus
 assign [class="mpv"] $tag4
