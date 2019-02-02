@@ -26,7 +26,7 @@ for line in sys.stdin:
             #print(dd)
             kk = d[dd]
             #print(kk)
-            e[kk] = ""
+            e[kk] = ""
             #print(e)
             r = ''.join(e)
             print(r)

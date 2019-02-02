@@ -53,6 +53,10 @@ alias vdiffsudit="SUDO_EDITOR=vimdiff sudoedit"
 alias gitpush="git push origin master"
 alias gitadd="git add -f"
 alias gitcommit="git commit -a"
+# Dev aliases
+alias sshubuntu="ssh -p 3022 yusubuntu@127.0.0.1"
+alias vboxheadless="vboxmanage startvm Ubuntu\ Server --type headless"
+alias vboxpoweroff="vboxmanage controlvm Ubuntu\ Server poweroff"
 
 # Functions
 # Sopcast helper
