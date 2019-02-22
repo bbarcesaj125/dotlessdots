@@ -44,7 +44,7 @@ alias pSyy="sudo pacman -Syy"
 alias pSyu="sudo pacman -Syu"
 alias pR="sudo pacman -R"
 alias pRs="sudo pacman -Rs"
-alias Yu="yaourt -Syua"
+alias Yu="yay -Syu"
 # Commonly edited dotfiles {{{
 alias vXres="vim ~/.Xresources"
 # Vimdiff sudoedit
@@ -150,8 +150,8 @@ export EDITOR=vim
 
 # Wine Env Variables
 
-export WINEPREFIX=$HOME/.win32/
-export WINEARCH=win32
+#export WINEPREFIX=$HOME/.win32/
+#export WINEARCH=win32
 
 # Source Zsh
 source $ZSH/oh-my-zsh.sh
