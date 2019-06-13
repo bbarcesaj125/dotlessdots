@@ -19,4 +19,13 @@
 	<patterns>*</patterns>
 	<video-files/>
 </action>
+<action>
+	<icon>vlc</icon>
+	<name>Vlc</name>
+	<unique-id>1558809519591534-1</unique-id>
+	<command>vlc %f</command>
+	<description>Play with Vlc</description>
+	<patterns>*</patterns>
+	<video-files/>
+</action>
 </actions>
