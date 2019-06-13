@@ -24,9 +24,9 @@ fi
 if ([ "$DATE" -ge `date --date="$DATE_CURL_SUNSET" +%s` ] || [ "$DATE" -le `date --date="$DATE_CURL_SUNRISE" +%s` ]) && [ "$GAMMA_ACTUAL" = "$GAMMA_DEFAULT" ];
 then
 	xgamma -rgamma 1.3 -ggamma 1 -bgamma 0.7
-	notify-send -t 1970 "Yo! I'm the <i>sun</i> .. I'm setting .. Maybe I have already done so .. Arrrgh .. See ya!"
+	notify-send -t 1970 "Yo! I'm the sun .. I'm setting .. Maybe I have already done so .. Arrrgh .. See ya!"
 elif  [ "$DATE" -le `date --date="$DATE_CURL_SUNSET" +%s` ] && [ "$DATE" -ge `date --date="$DATE_CURL_SUNRISE" +%s` ] && [ "$GAMMA_ACTUAL" != "$GAMMA_DEFAULT" ]; 
 then
 	xgamma -gamma 1
-	notify-send -t 1970 "Yo! I'm the <i>sun</i> .. I'm rising or maybe it is morning already .. Yay .. Have a good day sir!"
+	notify-send -t 1970 "Yo! I'm the sun .. I'm rising or maybe it is morning already .. Yay .. Have a good day sir!"
 fi
