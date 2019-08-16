@@ -11,7 +11,7 @@ const regExChapterName = new RegExp('(?<=' + mangaName + '\/)(.*?)(?=\\?)');
 var imageCount = 0;
 
 (async () => {
-	const browser = await puppeteer.launch({args: ['--no-sandbox', '--disable-setuid-sandbox']});
+	const browser = await puppeteer.launch({headless: false, args: ['--no-sandbox', '--disable-setuid-sandbox']});
 	const page = await browser.newPage();
 	await page.goto(mangaUrl);
 	await page.waitForSelector('table.listing');
@@ -29,7 +29,9 @@ var imageCount = 0;
 		chapterName = 'pre' + i + '-' + regExChapterName.exec(chaptersToDownload[i])[0] + '_' + mangaName;
 		console.log('The current chapter\'s name is: ' + chapterName);
 		// const page = await browser.newPage();
-		await page.goto(chaptersToDownload[i]);
+		await page.goto(chaptersToDownload[i], {
+			timeout: 90000
+		});
 		await page.waitForSelector('div#divImage');
 		var imageLinks = await page.evaluate(() => [...document.querySelectorAll('#divImage > p > img')].map(element => element.getAttribute('src')));  
 		imageCount += imageLinks.length;
