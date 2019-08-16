@@ -11,7 +11,10 @@ const regExChapterName = new RegExp('(?<=' + mangaName + '\/)(.*?)(?=\\?)');
 var imageCount = 0;
 
 (async () => {
-	const browser = await puppeteer.launch({headless: false, args: ['--no-sandbox', '--disable-setuid-sandbox']});
+	const browser = await puppeteer.launch({
+		headless: false,
+		args: ['--no-sandbox', '--disable-setuid-sandbox']
+	});
 	const page = await browser.newPage();
 	await page.goto(mangaUrl);
 	await page.waitForSelector('table.listing');
