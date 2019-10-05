@@ -9,7 +9,8 @@
 #
 # Please see http://i3wm.org/docs/userguide.html for a complete reference!
 
-set $mod Mod1
+set $mod Mod4
+set $mod1 Mod1
 
 # Font for window titles. Will also be used by the bar unless a different font
 # is used in the bar {} block below.
@@ -33,7 +34,7 @@ bindsym $mod+Return exec urxvt
 bindcode $mod+Shift+38 kill 
 
 # start dmenu (a program launcher)
-bindsym mod4+d exec --no-startup-id dmenu_run -i -b -nf 'gray' -sb '#35d67d' -nb 'black'
+bindsym $mod+d exec --no-startup-id dmenu_run -i -b -nf 'gray' -sb '#35d67d' -nb 'black'
 # There also is the (new) i3-dmenu-desktop which only displays applications
 # shipping a .desktop file. It is a wrapper around dmenu, so you need that
 # installed.
@@ -41,16 +42,16 @@ bindsym mod4+d exec --no-startup-id dmenu_run -i -b -nf 'gray' -sb '#35d67d' -nb
 
 # keybinding ----
 # general
-bindsym Control+mod1+l exec --no-startup-id i3lock -c 222222
+bindsym Control+$mod+l exec --no-startup-id i3lock -c 222222
 bindsym Print exec scrot ~/Pictures/ScrotShots/%Y-%m-%d-%T-screenshot.png -d 3
-bindsym mod4+t exec thunar
-bindsym mod4+c exec chromium
-bindsym mod4+o exec primusrun chromium
-bindsym mod4+f exec firefox
-bindsym mod4+z exec zim 
-bindsym mod4+m exec mcomix
-bindsym mod4+n exec urxvt -name mpd -e ncmpcpp
-bindsym mod4+comma exec --no-startup-id ~/.scripts/tint2_toggle.sh
+bindsym $mod+t exec thunar
+bindsym $mod+c exec chromium
+bindsym $mod+o exec primusrun chromium
+bindsym $mod+f exec firefox
+bindsym $mod+z exec zim 
+bindsym $mod+m exec mcomix
+bindsym $mod+n exec urxvt -name mpd -e ncmpcpp
+bindsym $mod+comma exec --no-startup-id ~/.scripts/tint2_toggle.sh
 
 
 # multimedia
@@ -63,8 +64,8 @@ bindsym XF86AudioLowerVolume exec --no-startup-id pactl set-sink-volume 0 -2%
 bindsym XF86AudioMute exec --no-startup-id pactl set-sink-mute 0 toggle 
 
 # Keyboard layout switching (r)
-bindcode mod4+27 exec setxkbmap fr 
-bindsym mod4+y exec setxkbmap yusuf
+bindcode $mod+Control+27 exec setxkbmap fr 
+bindsym $mod+Control+y exec setxkbmap yusuf
 
 # appearance ----
 
@@ -79,10 +80,10 @@ client.urgent           #355937 #55d17a #ffffff #0d8900
 new_window pixel 1
 new_float pixel 1
 hide_edge_borders both
-bindsym $mod+b border toggle
-bindsym $mod+t border normal
-bindsym $mod+o border 1pixel
-bindsym $mod+u border none
+bindsym $mod+Shift+b border toggle
+bindsym $mod+Shift+t border normal
+bindsym $mod+Shift+o border 1pixel
+bindsym $mod+Shift+u border none
 
 # window control ----
 # change focus
@@ -122,12 +123,12 @@ bindsym $mod+h split h
 bindsym $mod+v split v
 
 # enter fullscreen mode for the focused container
-bindsym $mod+f fullscreen
+bindsym $mod+Shift+f fullscreen
 
 # change container layout (stacked, tabbed, toggle split)
-bindsym $mod+s layout stacking
-bindsym $mod+w layout tabbed
-bindsym $mod+e layout toggle split
+bindsym $mod+Control+s layout stacking
+bindsym $mod+Control+w layout tabbed
+bindsym $mod+Control+e layout toggle split
 
 # toggle tiling / floating
 bindsym $mod+Shift+space floating toggle
@@ -137,9 +138,6 @@ bindsym $mod+space focus mode_toggle
 
 # focus the parent container
 bindsym $mod+a focus parent
-
-# focus the child container
-#bindsym $mod+d focus child
 
 # workspaces ----
 # enable back & forth
@@ -157,32 +155,32 @@ set $tag8 "θ: gimp"
 set $tag9 "ι: misc"
 
 # switch to workspace
-bindsym $mod+1 workspace $tag1
-bindsym $mod+2 workspace $tag2
-bindsym $mod+3 workspace $tag3
-bindsym $mod+4 workspace $tag4
-bindsym $mod+5 workspace $tag5
-bindsym $mod+6 workspace $tag6
-bindsym $mod+7 workspace $tag7
-bindsym $mod+8 workspace $tag8
-bindsym $mod+9 workspace $tag9
-bindsym $mod+0 workspace 10
+bindsym $mod1+1 workspace $tag1
+bindsym $mod1+2 workspace $tag2
+bindsym $mod1+3 workspace $tag3
+bindsym $mod1+4 workspace $tag4
+bindsym $mod1+5 workspace $tag5
+bindsym $mod1+6 workspace $tag6
+bindsym $mod1+7 workspace $tag7
+bindsym $mod1+8 workspace $tag8
+bindsym $mod1+9 workspace $tag9
+bindsym $mod1+0 workspace 10
 
 # move focused container to workspace
-bindsym $mod+Shift+1 move container to workspace $tag1
-bindsym $mod+Shift+2 move container to workspace $tag2
-bindsym $mod+Shift+3 move container to workspace $tag3
-bindsym $mod+Shift+4 move container to workspace $tag4
-bindsym $mod+Shift+5 move container to workspace $tag5
-bindsym $mod+Shift+6 move container to workspace $tag6
-bindsym $mod+Shift+7 move container to workspace $tag7
-bindsym $mod+Shift+8 move container to workspace $tag8
-bindsym $mod+Shift+9 move container to workspace $tag9
-bindsym $mod+Shift+0 move container to workspace 10
+bindsym $mod1+Shift+1 move container to workspace $tag1
+bindsym $mod1+Shift+2 move container to workspace $tag2
+bindsym $mod1+Shift+3 move container to workspace $tag3
+bindsym $mod1+Shift+4 move container to workspace $tag4
+bindsym $mod1+Shift+5 move container to workspace $tag5
+bindsym $mod1+Shift+6 move container to workspace $tag6
+bindsym $mod1+Shift+7 move container to workspace $tag7
+bindsym $mod1+Shift+8 move container to workspace $tag8
+bindsym $mod1+Shift+9 move container to workspace $tag9
+bindsym $mod1+Shift+0 move container to workspace 10
 
 # assign apps to workspaces
 assign [class="Chromium"] $tag1
-assign [class="Firefox"] $tag2
+assign [class="firefox"] $tag2
 assign [class="qutebrowser"] $tag2
 for_window [class="Chromium|Firefox"] border 1pixel
 assign [class="Zim"] $tag3
@@ -200,7 +198,7 @@ assign [class="VirtualBox" ] $tag9
 # make the currently focused window a scratchpad
 bindsym $mod+Shift+comma move scratchpad
 # show the first scratchpad window
-bindsym $mod+comma scratchpad show
+bindsym $mod+Control+comma scratchpad show
 
 # reload the configuration file
 bindsym $mod+Shift+c reload
