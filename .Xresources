@@ -21,11 +21,11 @@ URxvt.font: xft: Roboto Mono for Powerline:pixelsize=12
 !URxvt.boldFont: xft: Roboto Mono for Powerline:pixelsize=12:bold
 !URxvt.italicFont: xft:Roboto Mono for Powerline:pixelsize=12:italic
 !URxvt.bolditalicFont: xft:Roboto Mono for Powerline:pixelsize=12:bold:italic
-!URxvt*letterSpace: -1
+!URxvt*letterSpace: -2
 
 ! Clickable URLs + Tab support (disabled for now)
 URxvt.perl-ext-common: default,matcher
-URxvt.url-launcher: google-chrome-stable    
+URxvt.url-launcher: chromium
 URxvt.matcher.button: 1
 
 ! Icon file

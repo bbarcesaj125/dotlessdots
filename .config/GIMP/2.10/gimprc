@@ -26,6 +26,7 @@
     (padding-mode default)
     (padding-color (color-rgb 1.000000 1.000000 1.000000)))
 (move-tool-changes-active yes)
+(image-convert-indexed-max-colors 8)
 (layer-new-name "Stroke 3")
 (selection-shrink-radius 2.000000)
 (fill-options

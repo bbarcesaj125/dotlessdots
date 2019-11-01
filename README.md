@@ -30,7 +30,7 @@ They say that an image is worth a thousand words, so without further due, here i
 This is a loose todo list that contains things I am strongly interested in. 
 
 - [ ] Switch to bspwm
-- [ ] Switch to AwesomeWM
+- [x] Switch to AwesomeWM (*Process has started...*)
 - [ ] Install pywal
 - [ ] Switch to Neovim
 - [ ] Ditch Pathogen in favor of vim's built-in package system
