@@ -31,21 +31,21 @@ zle -N insert-sudo insert_sudo
 bindkey "^[d" insert-sudo
 
 # Some aliases
-# Ls aliases {{{
+# Ls aliases
 alias ls='ls --color'
-# Dev aliases {{{
+# Dev aliases
 alias vz='vim ~/.zshrc'
 alias sz='source ~/.zshrc'
-# Xboard FICS {{{
+# Xboard FICS
 alias xchess='xboard -ics -icshost freechess.org'
-# Manjaro/Arch Aliases {{{
+# Manjaro/Arch Aliases 
 alias pS="sudo pacman -S"
 alias pSyy="sudo pacman -Syy"
 alias pSyu="sudo pacman -Syu"
 alias pR="sudo pacman -R"
 alias pRs="sudo pacman -Rs"
 alias Yu="yay -Syu"
-# Commonly edited dotfiles {{{
+# Commonly edited dotfiles
 alias vXres="vim ~/.Xresources"
 # Vimdiff sudoedit
 alias vdiffsudit="SUDO_EDITOR=vimdiff sudoedit"
@@ -54,9 +54,13 @@ alias gitpush="git push origin master"
 alias gitadd="git add -f"
 alias gitcommit="git commit -a"
 # Dev aliases
+# Vbox and SSH
 alias sshubuntu="ssh -p 3022 yusubuntu@127.0.0.1"
 alias vboxheadless="vboxmanage startvm Ubuntu\ Server --type headless"
 alias vboxpoweroff="vboxmanage controlvm Ubuntu\ Server poweroff"
+# Tomcat
+alias tomstart="$CATALINA_HOME/bin/startup.sh"
+alias tomstop="$CATALINA_HOME/bin/shutdown.sh"
 
 # Functions
 # Sopcast helper
@@ -119,7 +123,7 @@ zipme () {
 
 # Reflector
 reflect() {
-	sudo reflector --verbose -l $1 -p http --sort rate --save /etc/pacman.d/mirrorlist
+	sudo reflector --verbose --latest $1 --sort rate --save /etc/pacman.d/mirrorlist
 }
 
 # GTA IV Launcher
