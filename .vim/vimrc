@@ -1,9 +1,5 @@
 " This is my modest Vim Config
 
-" RunTime Path Manipulation
-call pathogen#infect()
-call pathogen#helptags()
-
 " Set no-compatible mode
 set nocompatible
 
