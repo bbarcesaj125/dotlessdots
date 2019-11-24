@@ -1,3 +1,3 @@
-[submodule "/home/archyusuf/.vim/pak/plugins/start/vim-airline"]
-	path = /home/archyusuf/.vim/pak/plugins/start/vim-airline
+[submodule "/home/archyusuf/.vim/pak/plugins/start/vim-airline1"]
+	path = /home/archyusuf/.vim/pak/plugins/start/vim-airline1
 	url = https://github.com/vim-airline/vim-airline
