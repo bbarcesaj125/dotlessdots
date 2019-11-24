@@ -1,3 +1,6 @@
 [submodule "/home/archyusuf/.vim/pak/plugins/start/nerdtree"]
 	path = /home/archyusuf/.vim/pak/plugins/start/nerdtree
 	url = https://github.com/scrooloose/nerdtree.git
+[submodule "/home/archyusuf/.vim/pak/plugins/start/vim-airline"]
+	path = /home/archyusuf/.vim/pak/plugins/start/vim-airline
+	url = https://github.com/vim-airline/vim-airline
