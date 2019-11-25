@@ -1,5 +1,8 @@
 " This is my modest Vim Config
 
+" Package directory
+set packpath+=~/.vim/pak/
+
 " Set no-compatible mode
 set nocompatible
 
