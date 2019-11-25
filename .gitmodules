@@ -1,0 +1,15 @@
+[submodule ".vim/pack/plugins/start/nerdtree"]
+	path = .vim/pack/plugins/start/nerdtree
+	url = https://github.com/scrooloose/nerdtree.git
+[submodule ".vim/pack/plugins/start/vim-airline"]
+	path = .vim/pack/plugins/start/vim-airline
+	url = https://github.com/vim-airline/vim-airline
+[submodule ".vim/pack/plugins/start/surround"]
+	path = .vim/pack/plugins/start/surround
+	url = https://github.com/tpope/vim-surround.git
+[submodule ".vim/pack/plugins/start/syntastic"]
+	path = .vim/pack/plugins/start/syntastic
+	url = https://github.com/vim-syntastic/syntastic.git
+[submodule ".vim/pack/plugins/start/YouCompleteMe"]
+	path = .vim/pack/plugins/start/YouCompleteMe
+	url = https://github.com/ycm-core/YouCompleteMe.git
