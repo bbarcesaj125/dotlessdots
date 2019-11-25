@@ -33,4 +33,4 @@ This is a loose todo list that contains things I am strongly interested in.
 - [x] Switch to AwesomeWM (*Process has started...*)
 - [ ] Install pywal
 - [ ] Switch to Neovim
-- [ ] Ditch Pathogen in favor of vim's built-in package system
+- [x] Ditch Pathogen in favor of vim's built-in package system
