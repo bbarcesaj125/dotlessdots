@@ -40,7 +40,7 @@ set ruler " Activate a permanent ruler
 " Searching options
 set ignorecase    " Ignore case when searching
 set smartcase     " Ignore case if search pattern is all lowercase, case-sensitive otherwise
-set hlsearch      " Highlight search terms
+set nohlsearch    " Auto highlight search terms
 set incsearch     " Show search matches as you type
 
 " Enable filetype plugins and indention
