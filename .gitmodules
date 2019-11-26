@@ -10,6 +10,3 @@
 [submodule ".vim/pack/plugins/start/syntastic"]
 	path = .vim/pack/plugins/start/syntastic
 	url = https://github.com/vim-syntastic/syntastic.git
-[submodule ".vim/pack/plugins/start/YouCompleteMe"]
-	path = .vim/pack/plugins/start/YouCompleteMe
-	url = https://github.com/ycm-core/YouCompleteMe.git
