@@ -6,7 +6,7 @@ mpd
 nm-applet &
 sh ~/.fehbg &
 sh ~/.scripts/i3-low-battery.sh &
-compton &
+picom &
 (sleep 1s && pasystray) &
 (sleep 4s && parcellite) &
 (sleep 5s && dropbox) &
