@@ -25,6 +25,7 @@ nmap <silent> <leader>sv :so $MYVIMRC<CR>
 map  <C-l> :tabn<CR> " Ctrl+L to move to the next tab
 map  <C-h> :tabp<CR> " Ctrl+H to move to the previous tab
 map  <C-n> :tabnew<CR> " Ctrl+N to create a new tab
+nmap  <F5> :setlocal spell! spelllang=en_us<CR> " F5 to toggle spell checking
 
 " Some random options
 set hidden " Hide buffers instead of closing them
