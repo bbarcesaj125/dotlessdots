@@ -56,7 +56,6 @@ alias gitcommit="git commit -a"
 # Dev aliases
 # Vbox and SSH
 alias sshubuntu="ssh -p 3022 yusubuntu@127.0.0.1"
-alias mongossh="ssh -p 3022 -L 27017:localhost:27017 yusubuntu@127.0.0.1"
 alias vboxheadless="vboxmanage startvm Ubuntu\ Server --type headless"
 alias vboxpoweroff="vboxmanage controlvm Ubuntu\ Server poweroff"
 # Tomcat
