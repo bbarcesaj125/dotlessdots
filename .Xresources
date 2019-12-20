@@ -17,7 +17,7 @@ URxvt.internalBorder: 0
 URxvt.externalBorder: 0
 
 ! Font declaration
-URxvt.font: xft: Roboto Mono for Powerline:pixelsize=12
+*.font: xft: Roboto Mono for Powerline:pixelsize=12
 !URxvt.boldFont: xft: Roboto Mono for Powerline:pixelsize=12:bold
 !URxvt.italicFont: xft:Roboto Mono for Powerline:pixelsize=12:italic
 !URxvt.bolditalicFont: xft:Roboto Mono for Powerline:pixelsize=12:bold:italic
@@ -41,23 +41,42 @@ URxvt*scrollTtyKeypress:    true
 
 ! Terminal colors 
 
-! Tango palette
+! Monokai
 
-URxvt*foreground: #F2F3F4
-*color0:  #2E3436
-*color1:  #a40000
-*color2:  #4E9A06
-*color3:  #C4A000
-*color4:  #3465A4
-*color5:  #75507B
-*color6:  #ce5c00
-*color7:  #babdb9
-*color8:  #555753
-*color9:  #EF2929
-*color10: #8AE234
-*color11: #FCE94F
-*color12: #729FCF
-*color13: #AD7FA8
-*color14: #fcaf3e
-*color15: #EEEEEC
+! special
+*.foreground:   #c5c8c6
+*.background:   #1d1f21
+*.cursorColor:  #c5c8c6
+
+! black
+*.color0:       #282a2e
+*.color8:       #373b41
+
+! red
+*.color1:       #a54242
+*.color9:       #cc6666
+
+! green
+*.color2:       #8c9440
+*.color10:      #b5bd68
+
+! yellow
+*.color3:       #de935f
+*.color11:      #f0c674
+
+! blue
+*.color4:       #5f819d
+*.color12:      #81a2be
+
+! magenta
+*.color5:       #85678f
+*.color13:      #b294bb
+
+! cyan
+*.color6:       #5e8d87
+*.color14:      #8abeb7
+
+! white
+*.color7:       #707880
+*.color15:      #c5c8c6
 
