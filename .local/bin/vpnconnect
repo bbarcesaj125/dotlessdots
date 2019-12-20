@@ -1,0 +1,101 @@
+#!/usr/bin/env bash
+
+# This is a simple bash script that uses openvpn to connect to a remote server.
+# It also disables the ipv6 protocol, and creates an iptables config that accepts only
+# traffic that goes through the created vpn tunnel.
+
+# Functions
+
+enableIpv6 ()
+{
+
+	local DMENU_RESPONSE=$(printf "No\\nYes" | dmenu -i -p "Do you want to re-enable Ipv6?" -nb "#2F4F35" -sb "#28C144" -sf  white -nf "#82B78B")
+	if [ $DMENU_RESPONSE == "Yes" ]
+	then
+		sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
+		sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0
+		sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=0
+	else
+		echo "Ipv6 won't be re-enabled!"
+	fi
+
+}
+
+disbaleIpv6 ()
+{
+
+	sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+	sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+	sudo sysctl -w net.ipv6.conf.lo.disable_ipv6=1
+
+}
+
+iptablesRestore ()
+{
+
+	local DMENU_RESPONSE=$(printf "No\\nYes" | dmenu -i -p "Do you want to restore iptables original configuration?" -nb "#2F4F35" -sb "#28C144" -sf  white -nf "#82B78B")
+	if [ $DMENU_RESPONSE == "Yes" ]
+	then
+		sudo iptables-restore /etc/iptables/iptables.rules
+	else
+		echo "iptables original configuration won't be restored!"
+	fi
+
+}
+
+iptablesVpn ()
+{
+
+	sudo iptables-restore /etc/iptables/iptablesvpn.rules
+
+}
+
+# Main function
+
+launchVpn ()
+{
+
+	# Restoring original configs upon receiving an exit signal
+	trap "enableIpv6; iptablesRestore" SIGINT SIGTERM 
+
+	disbaleIpv6
+	iptablesVpn
+
+	if [ -z "$1" ]
+	then
+
+		local CONFIG_DIRECTORY="$HOME/Downloads/strongvpn/"
+
+	else
+
+		local CONFIG_DIRECTORY="$HOME/Downloads/"$1"/"
+	fi
+
+	local -a ARR
+
+	cd "$CONFIG_DIRECTORY"
+
+	for ovpn in *.ovpn
+	do
+		#local newovpn="$(echo "$ovpn" | sed 's/ /\\ /g')"
+		ARR+=("$ovpn")
+	done
+
+	# Using a random .ovpn file each time we start the script
+	# local SELECTED="${ARR[$RANDOM % ${#ARR[@]}]}"
+	local SELECTED=$(printf "%s\n" "${ARR[@]}" | dmenu -i -p "Please choose a server to connect to:")
+	echo "$SELECTED"
+
+	sudo openvpn --script-security 2 \
+		--setenv PATH "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+		--up /etc/openvpn/update-resolv-conf \
+		--up-restart \
+		--down /etc/openvpn/update-resolv-conf \
+		--down-pre \
+		--dhcp-option "DOMAIN-ROUTE ." \
+		--config "$SELECTED" \
+		--auth-user-pass /etc/openvpn/client/pialogin.ovpn
+
+	}
+
+launchVpn
