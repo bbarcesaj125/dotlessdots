@@ -1,5 +1,5 @@
 # Env variables
-PATH="$PATH:$HOME/.appimages:$(ruby -e 'print Gem.user_dir')/bin:$HOME/Downloads/apache-maven-3.6.2/bin"
+PATH="$PATH:$HOME/.appimages:$(ruby -e 'print Gem.user_dir')/bin:$HOME/.local/bin"
 # Ruby EVs
 export GEM_HOME="$HOME/.gem"
 # QGtkStyle
