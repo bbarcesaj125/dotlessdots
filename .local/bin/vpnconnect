@@ -83,6 +83,8 @@ launchVpn ()
 
 	# Using a random .ovpn file each time we start the script
 	# local SELECTED="${ARR[$RANDOM % ${#ARR[@]}]}"
+
+	# Using dmenu to ask the user to choose a server
 	local SELECTED=$(printf "%s\n" "${ARR[@]}" | dmenu -i -p "Please choose a server to connect to:")
 	echo "$SELECTED"
 
