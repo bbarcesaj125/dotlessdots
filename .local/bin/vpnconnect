@@ -4,13 +4,43 @@
 # It also disables the ipv6 protocol, and creates an iptables config that accepts only
 # traffic that goes through the created vpn tunnel.
 
+# Parsing cmd-line arguments
+
+POSITIONAL=()
+while [[ $# -gt 0 ]]
+do
+	key="$1"
+
+	case $key in
+		-d|--directory)
+			DIRECTORY="$2"
+			shift # past argument
+			shift # past value
+			;;
+		-n|--noresolv)
+			NORESOLV="$2"
+			shift # past argument
+			shift # past value
+			;;
+		--default)
+			DEFAULT=YES
+			shift # past argument
+			;;
+		*)    # unknown option
+			POSITIONAL+=("$1") # save it in an array for later
+			shift # past argument
+			;;
+	esac
+done
+set -- "${POSITIONAL[@]}"
+
 # Functions
 
 enableIpv6 ()
 {
 
 	local DMENU_RESPONSE=$(printf "No\\nYes" | dmenu -i -p "Do you want to re-enable Ipv6?" -nb "#2F4F35" -sb "#28C144" -sf  white -nf "#82B78B")
-	if [ $DMENU_RESPONSE == "Yes" ]
+	if [[ "${DMENU_RESPONSE}" == "Yes" ]]
 	then
 		sudo sysctl -w net.ipv6.conf.all.disable_ipv6=0
 		sudo sysctl -w net.ipv6.conf.default.disable_ipv6=0
@@ -34,8 +64,9 @@ iptablesRestore ()
 {
 
 	local DMENU_RESPONSE=$(printf "No\\nYes" | dmenu -i -p "Do you want to restore iptables original configuration?" -nb "#2F4F35" -sb "#28C144" -sf  white -nf "#82B78B")
-	if [ $DMENU_RESPONSE == "Yes" ]
+	if [[ "${DMENU_RESPONSE}" == "Yes" ]]
 	then
+		testTransmission
 		sudo iptables-restore /etc/iptables/iptables.rules
 	else
 		echo "iptables original configuration won't be restored!"
@@ -50,6 +81,22 @@ iptablesVpn ()
 
 }
 
+testTransmission()
+{
+
+	local TEST="$(pgrep -x transmission-gt)"
+
+	if [[ ! -z "${TEST}" ]]
+	then
+		[[ $(printf "No\\nYes" | dmenu -i -p "Do you want to kill transmission-gt?" -nb "#2F4F35" -sb "#28C144" -sf  white -nf "#82B78B") == "Yes" ]] \
+			&& killall transmission-gt \
+			|| notify-send "transmission-gt won't be killed!"
+	else
+		notify-send "tranmission-gt is not running!"
+	fi
+
+}
+
 # Main function
 
 launchVpn ()
@@ -61,23 +108,23 @@ launchVpn ()
 	disbaleIpv6
 	iptablesVpn
 
-	if [ -z "$1" ]
+	if [[ -z "${DIRECTORY}" ]]
 	then
 
-		local CONFIG_DIRECTORY="$HOME/Downloads/strongvpn/"
+		local CONFIG_DIRECTORY="${HOME}/Downloads/strongvpn/"
 
 	else
 
-		local CONFIG_DIRECTORY="$HOME/Downloads/"$1"/"
+		local CONFIG_DIRECTORY="${HOME}/Downloads/"${DIRECTORY}""
 	fi
 
 	local -a ARR
 
-	cd "$CONFIG_DIRECTORY"
+	cd "${CONFIG_DIRECTORY}"
 
 	for ovpn in *.ovpn
 	do
-		#local newovpn="$(echo "$ovpn" | sed 's/ /\\ /g')"
+		# local newovpn="$(echo "$ovpn" | sed 's/ /\\ /g')"
 		ARR+=("$ovpn")
 	done
 
@@ -86,7 +133,7 @@ launchVpn ()
 
 	# Using dmenu to ask the user to choose a server
 	local SELECTED=$(printf "%s\n" "${ARR[@]}" | dmenu -i -p "Please choose a server to connect to:")
-	echo "$SELECTED"
+	echo "${SELECTED}"
 
 	sudo openvpn --script-security 2 \
 		--setenv PATH "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
@@ -95,9 +142,9 @@ launchVpn ()
 		--down /etc/openvpn/update-resolv-conf \
 		--down-pre \
 		--dhcp-option "DOMAIN-ROUTE ." \
-		--config "$SELECTED" \
+		--config "${SELECTED}" \
 		--auth-user-pass /etc/openvpn/client/pialogin.ovpn
 
-	}
+}
 
 launchVpn

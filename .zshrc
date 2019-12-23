@@ -159,3 +159,7 @@ export EDITOR=vim
 
 # Source Zsh
 source $ZSH/oh-my-zsh.sh
+
+# Fzf
+source /usr/share/fzf/key-bindings.zsh
+source /usr/share/fzf/completion.zsh
