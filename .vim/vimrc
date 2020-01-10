@@ -15,17 +15,30 @@ set wildmenu
 set wildmode=list:longest,full
 
 " Change the mapleader to ,
-let mapleader=","
+let mapleader=" "
 
 " Vimrc quick edit
 nmap <silent> <leader>ev :e $MYVIMRC<CR>
 nmap <silent> <leader>sv :so $MYVIMRC<CR>
 
-" Key bindings
+""" Key bindings <
+" Tabs keybindings
 map  <C-l> :tabn<CR> " Ctrl+L to move to the next tab
 map  <C-h> :tabp<CR> " Ctrl+H to move to the previous tab
 map  <C-n> :tabnew<CR> " Ctrl+N to create a new tab
-nmap  <F5> :setlocal spell! spelllang=en_us<CR> " F5 to toggle spell checking
+" Spell checking
+nmap <F5> :setlocal spell! spelllang=en_us<CR> " F5 to toggle spell checking
+" Fzf bindings
+nmap <Leader>F :GFiles<CR>
+nmap <C-p> :Files<CR>
+nmap <Leader>b :Buffers<CR>
+nmap <Leader>h :History<CR>
+nmap <Leader>t :BTags<CR>
+nmap <Leader>T :Tags<CR>
+nmap <Leader>l :BLines<CR>
+nmap <Leader>L :Lines<CR>
+nmap <Leader>/ :Rg<Space>
+""" Key bindings >
 
 " Some random options
 set hidden " Hide buffers instead of closing them
@@ -87,6 +100,8 @@ set laststatus=2
 highlight Comment cterm=italic
 
 " Plugin settings
+
+""" ALE <
 " Set ALE's fixer for JavaScript to Eslint
 let g:ale_fixers = {
 \   'javascript': ['eslint']
@@ -97,6 +112,11 @@ let g:ale_fix_on_save = 1
 
 " Disable highlighting
 let g:ale_set_highlights = 0
+
+"" Warning settings
+highlight ALEErrorSign ctermbg=NONE ctermfg=red
+highlight ALEWarningSign ctermbg=NONE ctermfg=yellow
+""" ALE >
 
 " coc.nvim's specific settings
 " Some servers have issues with backup files, see #649

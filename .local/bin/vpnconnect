@@ -90,6 +90,7 @@ testTransmission()
 	then
 		[[ $(printf "No\\nYes" | dmenu -i -p "Do you want to kill transmission-gt?" -nb "#2F4F35" -sb "#28C144" -sf  white -nf "#82B78B") == "Yes" ]] \
 			&& killall transmission-gt \
+			&& notify-send "transmission-gt was killed!" \
 			|| notify-send "transmission-gt won't be killed!"
 	else
 		notify-send "tranmission-gt is not running!"

@@ -58,6 +58,7 @@ alias gitcommit="git commit -a"
 alias sshubuntu="ssh -p 3022 yusubuntu@127.0.0.1"
 alias vboxheadless="vboxmanage startvm Ubuntu\ Server --type headless"
 alias vboxpoweroff="vboxmanage controlvm Ubuntu\ Server poweroff"
+alias mongossh="ssh -4 -p 3022 -L 27017:localhost:27017 yusubuntu@127.0.0.1"
 # Tomcat
 alias tomstart="$CATALINA_HOME/bin/startup.sh"
 alias tomstop="$CATALINA_HOME/bin/shutdown.sh"
@@ -161,5 +162,7 @@ export EDITOR=vim
 source $ZSH/oh-my-zsh.sh
 
 # Fzf
+#export FZF_DEFAULT_COMMAND='ag --hidden --ignore node_modules -g ""'
+export FZF_DEFAULT_COMMAND='rg --files --no-ignore --hidden --follow -g "!{.git,node_modules}/*" 2> /dev/null'
 source /usr/share/fzf/key-bindings.zsh
 source /usr/share/fzf/completion.zsh
