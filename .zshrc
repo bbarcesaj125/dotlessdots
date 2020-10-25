@@ -62,6 +62,8 @@ alias mongossh="ssh -4 -p 3022 -L 27017:localhost:27017 yusubuntu@127.0.0.1"
 # Tomcat
 alias tomstart="$CATALINA_HOME/bin/startup.sh"
 alias tomstop="$CATALINA_HOME/bin/shutdown.sh"
+# Dotfiles management
+alias dotfiles="/usr/bin/git --git-dir=$HOME/.dotfiles.git/ --work-tree=$HOME"
 
 # Functions
 # Sopcast helper

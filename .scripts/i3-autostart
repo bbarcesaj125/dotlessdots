@@ -1,15 +1,17 @@
-#!/bin/sh
+#!/usr/bin/env bash
 
-# Startup apps
-mpd
-/usr/bin/lxpolkit &
-nm-applet &
-sh ~/.fehbg &
-sh ~/.scripts/i3-low-battery.sh &
-picom &
-(sleep 1s && pasystray) &
-(sleep 4s && parcellite) &
-(sleep 5s && dropbox) &
-(sleep 5s && tint2) & 
-(sleep 30s && i3-msg '[ class="Tint2" ] move scratchpad' > /dev/null 2>&1) &
+function run {
+  if ! pgrep -f $1 ;
+  then
+    $@&
+  fi
+}
 
+run setxkbmap -layout de -option compose:prsc
+run mpd
+run /usr/bin/lxqt-policykit-agent 
+run nm-applet 
+run picom 
+(sleep 1s && run pasystray) 
+(sleep 4s && run parcellite) 
+(sleep 5s && run dropbox) 

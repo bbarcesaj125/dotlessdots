@@ -72,9 +72,10 @@ filetype plugin indent on
 set t_Co=256
 
 " Disable BCE (Background Color Erase)
-if &term =~ '256color'
-	set t_ut=
-endif
+" if &term =~ '256color'
+" 	set t_ut=
+" endif
+let &t_ut=''
 
 " Enable syntax highlighting
 if &t_Co >= 256 || has("gui_running")

@@ -1,7 +1,7 @@
 #!/bin/bash
 getLetter=$(xmodmap -pke | grep 'keycode  59' | awk '{print $5}')
 
-if [ $getLetter == "period" ] 
+if [ $getLetter == "semicolon" ] 
 then
 	echo "fr"
 else
