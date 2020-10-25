@@ -257,7 +257,7 @@ bindsym $mod+Pause mode "$mode_system"
 # finds out, if available)
 
 bar {
-    tray_output none
+    tray_output primary
     font pango:DejaVu Sans Mono, FontAwesome 10
     colors {
         # Whole color settings
