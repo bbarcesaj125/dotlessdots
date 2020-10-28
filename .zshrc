@@ -12,7 +12,7 @@ PROMPT="%{$fg[red]%}%n%{$reset_color%}@%{$fg[blue]%}%m %{$fg_no_bold[yellow]%}%1
 RPROMPT="[%{$fg_no_bold[yellow]%}%?%{$reset_color%}]"
 
 # ZSH theme 
-ZSH_THEME="duellj"
+ZSH_THEME="agnoster"
 
 # Store last used commands
 HISTFILE=~/.zhistory
