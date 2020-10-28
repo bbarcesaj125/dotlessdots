@@ -6,7 +6,7 @@ headers = {
 
 test = 0
 def json_to_csv(data):
-    with open('/home/archyusuf/Dropbox/UbuntuOneStuff/Investment/binanceData.csv', 'w', newline='') as csv_data:                                                                                                                                             
+    with open('/home/yusarch/Dropbox/UbuntuOneStuff/Investment/binanceData.csv', 'w', newline='') as csv_data:                                                                                                                                             
         csv_file = csv.writer(csv_data)                                                                                                                                                                                                                           
         count = 0                                                                                                                                                                                                                                                 
         for key in data:                                                                                                                                                                                                                               
