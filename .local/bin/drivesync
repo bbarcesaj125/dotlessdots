@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+
+# This is a simple bash script that keeps my local Google Drive folder in sync with its remote counterpart.
+# It is executed using a cron job.
+
+if [[ $(pidof -o %PPID -x "drivesync") ]]
+then
+	echo $(date "+%Y/%m/%d %H:%M:%S")" *CRON* WARNING  : drivesync is already running." >> /home/yusarch/.cache/rclone/drive.log
+	exit 1
+fi
+
+echo $(date "+%Y/%m/%d %H:%M:%S")" *CRON* INFO  : drivesync was started by cronie." >> /home/yusarch/.cache/rclone/drive.log
+
+# Rclone sync command
+
+/usr/bin/rclone copy --update --verbose --transfers 30 \
+	--log-file /home/yusarch/.cache/rclone/drive.log \
+	--checkers 8 --contimeout 60s --timeout 300s \
+	--retries 3 --low-level-retries 10 \
+	--stats 0 /home/yusarch/Drive/ Drive:

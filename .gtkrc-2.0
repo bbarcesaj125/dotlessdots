@@ -4,13 +4,13 @@
 include "/home/yusarch/.gtkrc-2.0.mine"
 gtk-theme-name="Numix"
 gtk-icon-theme-name="Numix"
-gtk-font-name="Droid Sans 12"
+gtk-font-name="Droid Sans 10"
 gtk-cursor-theme-name="Vanilla-DMZ-AA"
 gtk-cursor-theme-size=0
 gtk-toolbar-style=GTK_TOOLBAR_ICONS
 gtk-toolbar-icon-size=GTK_ICON_SIZE_SMALL_TOOLBAR
 gtk-button-images=0
-gtk-menu-images=0
+gtk-menu-images=1
 gtk-enable-event-sounds=1
 gtk-enable-input-feedback-sounds=1
 gtk-xft-antialias=1
