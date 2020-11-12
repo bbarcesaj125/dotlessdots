@@ -90,6 +90,9 @@ nmap <silent> <F4> :NERDTreeToggle<CR>
 " Switch to paste mode
 set pastetoggle=<F2>
 
+" Set encoding
+set encoding=utf-8
+
 " Enable PowerLine/Airtime
 let g:airline_powerline_fonts = 1
 " let g:Powerline_symbols = 'fancy'
