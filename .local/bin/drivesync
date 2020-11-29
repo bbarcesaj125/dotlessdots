@@ -17,4 +17,12 @@ echo $(date "+%Y/%m/%d %H:%M:%S")" *CRON* INFO  : drivesync was started by croni
 	--log-file /home/yusarch/.cache/rclone/drive.log \
 	--checkers 8 --contimeout 60s --timeout 300s \
 	--retries 3 --low-level-retries 10 \
-	--stats 0 /home/yusarch/Drive/ Drive:
+	--stats 0 /home/yusarch/Drive/Local/ Drive:Local
+
+sleep 30
+
+/usr/bin/rclone sync --update --verbose --transfers 30 \
+	--log-file /home/yusarch/.cache/rclone/drive.log \
+	--checkers 8 --contimeout 60s --timeout 300s \
+	--retries 3 --low-level-retries 10 \
+	--stats 0 Drive:Remote /home/yusarch/Drive/Remote/
