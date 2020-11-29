@@ -11,8 +11,7 @@ fi
 
 echo $(date "+%Y/%m/%d %H:%M:%S")" *CRON* INFO  : drivesync was started by cronie." >> /home/yusarch/.cache/rclone/drive.log
 
-# Rclone sync command
-
+# Rclone copy command
 /usr/bin/rclone copy --update --verbose --transfers 30 \
 	--log-file /home/yusarch/.cache/rclone/drive.log \
 	--checkers 8 --contimeout 60s --timeout 300s \
@@ -21,6 +20,7 @@ echo $(date "+%Y/%m/%d %H:%M:%S")" *CRON* INFO  : drivesync was started by croni
 
 sleep 30
 
+# Rclone sync command
 /usr/bin/rclone sync --update --verbose --transfers 30 \
 	--log-file /home/yusarch/.cache/rclone/drive.log \
 	--checkers 8 --contimeout 60s --timeout 300s \
