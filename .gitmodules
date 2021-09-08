@@ -19,3 +19,9 @@
 [submodule ".vim/pack/plugins/start/fzf"]
 	path = .vim/pack/plugins/start/fzf
 	url = https://github.com/junegunn/fzf.vim.git
+[submodule ".config/awesome/lain"]
+	path = .config/awesome/lain
+	url = https://github.com/lcpz/lain.git
+[submodule ".config/awesome/freedesktop"]
+	path = .config/awesome/freedesktop
+	url = https://github.com/lcpz/awesome-freedesktop.git
