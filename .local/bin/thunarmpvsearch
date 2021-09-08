@@ -34,7 +34,7 @@ while IFS="" read -r p || [ -n "$p" ]
 do
 	if [[ "$p" == *"$SELECTED_FILE"* ]]; then
 		SELECTED_FILE_WITH_PATH="$p"
-		echo "$SELECTED_FILE_WITH_PATH"
+		#echo "$SELECTED_FILE_WITH_PATH"
 	fi
 done <<< "$(find "$VIDEO_PATH" -type f)"
 
@@ -44,8 +44,10 @@ if [[ "${PREVIEW_OR_PLAY}" == "Preview" ]]; then
 	FULL_DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$SELECTED_FILE_WITH_PATH") 
 	HALF_DURATION=$(echo "$FULL_DURATION / 2" | bc)
 
-	echo "$SELECTED_FILE_WITH_PATH"
+	#echo "$SELECTED_FILE_WITH_PATH"
 	mpv --start="$HALF_DURATION" --length=100 --speed=4.5 "$SELECTED_FILE_WITH_PATH"
-else
+elif [[ "${PREVIEW_OR_PLAY}" == "Play" ]]; then  
 	mpv "$SELECTED_FILE_WITH_PATH"
+else
+	exit 1
 fi
