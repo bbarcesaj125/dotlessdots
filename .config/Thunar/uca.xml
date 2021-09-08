@@ -1,4 +1,4 @@
-<?xml encoding="UTF-8" version="1.0"?>
+<?xml version="1.0" encoding="UTF-8"?>
 <actions>
 <action>
 	<icon>utilities-terminal</icon>
@@ -11,15 +11,6 @@
 	<directories/>
 </action>
 <action>
-	<icon>mpv</icon>
-	<name>Mpv With Optimus</name>
-	<unique-id>1533329812550677-1</unique-id>
-	<command>primusrun mpv %f</command>
-	<description>Play video with Optirun</description>
-	<patterns>*</patterns>
-	<video-files/>
-</action>
-<action>
 	<icon>vlc</icon>
 	<name>Vlc</name>
 	<unique-id>1558809519591534-1</unique-id>
@@ -27,5 +18,14 @@
 	<description>Play with Vlc</description>
 	<patterns>*</patterns>
 	<video-files/>
+</action>
+<action>
+	<icon>mpv</icon>
+	<name>Search video files</name>
+	<unique-id>1631042563767438-2</unique-id>
+	<command>thunarmpvsearch %f</command>
+	<description>Search and review/play video files</description>
+	<patterns>*</patterns>
+	<directories/>
 </action>
 </actions>
