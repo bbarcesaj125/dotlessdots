@@ -18,6 +18,12 @@
 # too much system resources for a "preview" feature. 
 # In the end, I decided to drop the idea after discovering that mpv actually has a fast forward playback option.
 
+# Dependencies:
+# - mpv
+# - ffmpeg
+# - bc
+# - dmenu
+
 
 VIDEO_PATH="$1"
 
