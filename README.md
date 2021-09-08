@@ -4,7 +4,7 @@ This repository mainly contains my Archlinix dotfiles as well as some other cust
 
 ## My usual workflow
 
-I mainly use a tiling window manager (i.e., i3) in conjunction with a combination of GUI/CLI programs. The programs I frequently use are:
+I mainly use a tiling window manager (i.e., AwesomeWM) in conjunction with a combination of GUI/CLI programs. The programs I frequently use are:
 
 + AwesomeWM with a customized Powerarrow theme from [AwesomeWM Copycats](https://github.com/lcpz/awesome-copycats)
 + ~~i3~~
