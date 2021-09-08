@@ -21,7 +21,8 @@
 
 VIDEO_PATH="$1"
 
-SELECTED_FILE=$(find "$VIDEO_PATH" -type f -printf "%f\n" | dmenu -i -p "Please type in your search term:" -nb "#222222" -sb "#4b3b51" -sf  white -nf "#b5a8b9")
+SELECTED_FILE=$(find "$VIDEO_PATH" -type f -printf "%f\n" | \
+	dmenu -i -p "Please type in your search term:" -nb "#222222" -sb "#4b3b51" -sf  white -nf "#b5a8b9")
 
 while IFS="" read -r p || [ -n "$p" ]
 do
