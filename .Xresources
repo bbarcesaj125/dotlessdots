@@ -17,7 +17,7 @@ URxvt.internalBorder: 0
 URxvt.externalBorder: 0
 
 ! Font declaration
-*.font: xft: Roboto Mono for Powerline:pixelsize=12
+*.font: xft: Fantasque Sans Mono:pixelsize=12
 !URxvt.boldFont: xft: Roboto Mono for Powerline:pixelsize=12:bold
 !URxvt.italicFont: xft:Roboto Mono for Powerline:pixelsize=12:italic
 !URxvt.bolditalicFont: xft:Roboto Mono for Powerline:pixelsize=12:bold:italic

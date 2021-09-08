@@ -1,7 +1,7 @@
-# Env variables
-PATH="$PATH:$HOME/.appimages:$(ruby -e 'print Gem.user_dir')/bin:$HOME/.local/bin"
 # Ruby EVs
-export GEM_HOME="$HOME/.gem"
+export GEM_HOME="$(ruby -e 'puts Gem.user_dir')"
+# Env variables
+PATH="$PATH:$HOME/.appimages:$GEM_HOME/bin:$HOME/.local/bin"
 # QGtkStyle
 export QT_QPA_PLATFORMTHEME="gtk2"
 # Tomcat EVs

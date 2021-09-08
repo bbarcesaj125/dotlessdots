@@ -22,7 +22,7 @@ show_graph_range=false,
 -------------------------------------
 --  Window Specifications
 -------------------------------------
-gap_x=100,
+gap_x=2000,
 gap_y=150,
 minimum_height=620,
 minimum_width=268,
