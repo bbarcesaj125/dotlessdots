@@ -1,0 +1,8 @@
+[Unit]
+Description=Periodic Rsync Backup Timer
+RefuseManualStart=no
+RefuseManualStop=yes
+ 
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/rsync -a --delete --quiet /home/yusarch/Documents /home/yusarch/Downloads /home/yusarch/HDD --log-file=/home/yusarch/HDD/rsync.log

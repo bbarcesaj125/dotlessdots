@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic Rsync Backup Timer
+RefuseManualStart=no
+RefuseManualStop=no
+ 
+[Timer]
+OnBootSec=20min
+OnUnitActiveSec=3d 
+
+[Install]
+WantedBy=default.target

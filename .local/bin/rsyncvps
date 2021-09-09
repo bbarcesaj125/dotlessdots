@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+
+# This is a very simple script that runs an rsync command to backup my entire VPS system to my local machine.
+
+sudo rsync -aAXH --delete --quiet --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/media/*","/lost+found","/home/*/.gvfs","/var/lib/dhcpcd/*","/swapfile"} -e 'ssh -p 4252 -i /home/yusarch/.ssh/nopw_id' --rsync-path="sudo rsync" ubuntu@51.210.242.53:/ /home/yusarch/HDD/VPSBACKUP --log-file=/home/yusarch/HDD/rsync-vps.log
