@@ -1,0 +1,8 @@
+[Unit]
+Description=Periodic Rsync VPS Backup Timer
+RefuseManualStart=no
+RefuseManualStop=yes
+ 
+[Service]
+Type=oneshot
+ExecStart=/home/yusarch/.local/bin/rsyncvps
