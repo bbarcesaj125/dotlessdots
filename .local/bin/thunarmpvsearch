@@ -5,13 +5,13 @@
 # It takes in the path of the video directory as input and then gives the user the option 
 # to search all the video files in that folder. It provides the user with the option 
 # to either preview the video file or play it using mpv.
-# To use, create a custom action in thunar with the following options:
+# To use it, create a custom action in thunar with the following options:
 # Name: choose whatever name you like
 # Description: same as above
 # Command: thunarmpvsearch %f
-# Where thunarmpvsearch is the name of your script that lurkes somewhere in your PATH (i.e. ~/.local/bin)
+# Where thunarmpvsearch is the name of your script that lurkes somewhere in your PATH (i.e., ~/.local/bin)
 
-# The preview option is merely an mpv commandline option that plays a very small portion 
+# The preview option is merely an mpv command line option that plays a very small portion 
 # starting from the middle of the video using mpv's fast playback option.
 # I originally wanted to use ffmpeg and ImageMagick to dynamically generate a GIF preview of the video, 
 # but after a few tests I figured that it wasn't worth it since it appeared to use 
