@@ -15,6 +15,8 @@ promptinit
 
 # Prompt glitch fix (see https://github.com/ohmyzsh/ohmyzsh/issues/6985)
 export LC_ALL=en_US.UTF-8
+# TERM environment variable
+export TERM="xterm-256color"
 
 # Set name of the theme to load --- if set to "random", it will
 # load a random theme each time oh-my-zsh is loaded, in which case,

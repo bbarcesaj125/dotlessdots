@@ -24,7 +24,7 @@
 	<name>Search video files</name>
 	<unique-id>1631042563767438-2</unique-id>
 	<command>thunarmpvsearch %f</command>
-	<description>Search and review/play video files</description>
+	<description>Search and preview/play video files</description>
 	<patterns>*</patterns>
 	<directories/>
 </action>
