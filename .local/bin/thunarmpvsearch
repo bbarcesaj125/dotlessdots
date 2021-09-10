@@ -38,7 +38,7 @@ do
 	fi
 done <<< "$(find "$VIDEO_PATH" -type f)"
 
-PREVIEW_OR_PLAY=$(printf "Preview\\nPlay" | dmenu -i -p "Please type in your search term:" -nb "#222222" -sb "#4b3b51" -sf  white -nf "#b5a8b9")
+PREVIEW_OR_PLAY=$(printf "Preview\\nPlay" | dmenu -i -p "What do you want to do with the video?" -nb "#222222" -sb "#4b3b51" -sf  white -nf "#b5a8b9")
 
 if [[ "${PREVIEW_OR_PLAY}" == "Preview" ]]; then
 	FULL_DURATION=$(ffprobe -v error -show_entries format=duration -of default=noprint_wrappers=1:nokey=1 "$SELECTED_FILE_WITH_PATH") 
