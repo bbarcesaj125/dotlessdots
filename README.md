@@ -37,7 +37,7 @@ They say that an image is worth a thousand words, so without further due, here i
 This is a loose todo list that contains things I am strongly interested in. 
 
 - [ ] Switch to bspwm
-- [ ] Switch to Wayland
+- [ ] Switch to Wayland (Wayland finally seems to be picking up steam. Will consider switching (Sway?) in 2022)
 - [x] Switch to AwesomeWM (*WIP*)
 - [ ] Switch to Neovim
 - [x] Ditch Pathogen in favor of vim's built-in package system
