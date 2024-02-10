@@ -33,7 +33,7 @@ setopt HIST_EXPIRE_DUPS_FIRST  # allow dups, but expire old ones when I hit HIST
 setopt EXTENDED_HISTORY        # save timestamp and runtime information
 
 # Auto DIR
-setopt AUTO_CD
+#setopt AUTO_CD
 
 # Sudo inserting at the start of the line (Using Alt+D)
 insert_sudo () { zle beginning-of-line; zle -U "sudo " }
@@ -242,6 +242,8 @@ source /usr/share/fzf/key-bindings.zsh
 source /usr/share/fzf/completion.zsh
 
 # User configuration
+# Python EV
+export PYTHONPATH="/home/yusarch/Documents/Programming/Python/rt_movie_cover"
 
 # export MANPATH="/usr/local/man:$MANPATH"
 
