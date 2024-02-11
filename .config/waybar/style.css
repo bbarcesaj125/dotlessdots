@@ -87,7 +87,8 @@ button:hover {
 #mode,
 #idle_inhibitor,
 #scratchpad,
-#mpd {
+#mpd,
+#custom-weather {
     padding: 0 10px;
     color: #ffffff;
 }
@@ -158,6 +159,10 @@ label:focus {
 
 #disk.hdd {
     background-color: #2980b9;
+}
+
+#custom-weather {
+    background-color: #4E7C03;
 }
 
 #backlight {
