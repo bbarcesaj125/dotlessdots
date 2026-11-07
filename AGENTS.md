@@ -65,6 +65,15 @@ For any substantial modification or new implementation (e.g., creating a new scr
 - Wait for explicit user approval before executing the changes.
 - Trivial one-line bug fixes, typo corrections, or minor value adjustments do not require a formal plan.
 
+## Commit Messages
+
+- Use the imperative mood: `add`, `fix`, `remove`, `refactor`.
+- Keep the subject short (50 characters or fewer) and lowercase.
+- Use `<scope>: <summary>` when a scope helps.
+- One logical change per commit.
+- Add a body only when the reason is not obvious.
+- Avoid vague subjects such as `update` or `changes`.
+
 ## Configuration Standards
 
 - Prefer minimal, targeted changes.
