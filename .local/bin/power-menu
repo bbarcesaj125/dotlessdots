@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Power menu for Niri, using fuzzel.
+
+require_cmd() {
+    command -v "$1" >/dev/null 2>&1 || {
+        printf 'Error: missing required command: %s\n' "$1" >&2
+        exit 1
+    }
+}
+
+require_cmd fuzzel
+
+choice=$(
+    printf '%s\n' \
+        '  Lock' \
+        '󰍃  Logout' \
+        '󰤄  Suspend' \
+        '󰜉  Reboot' \
+        '󰐥  Shutdown' |
+        fuzzel --dmenu --prompt='Power: '
+) || exit 0
+
+action="${choice#*  }"
+
+case "$action" in
+    Lock)     require_cmd swaylock; swaylock ;;
+    Logout)   require_cmd niri; niri msg action quit ;;
+    Suspend)  systemctl suspend ;;
+    Reboot)   systemctl reboot ;;
+    Shutdown) systemctl poweroff ;;
+    *)        exit 0 ;;
+esac
