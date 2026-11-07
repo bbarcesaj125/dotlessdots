@@ -1,0 +1,17 @@
+# Ignore package-managed binaries and generated entry points in ~/.local/bin.
+.local/bin/*
+
+# Custom scripts that belong in the dotfiles repository.
+!.local/bin/clipboard-menu
+!.local/bin/display-scale
+!.local/bin/dotfiles
+!.local/bin/drivesync
+!.local/bin/iptv
+!.local/bin/power-menu
+!.local/bin/rsyncvps
+!.local/bin/thunarmpvsearch
+!.local/bin/vid-download
+!.local/bin/vpnconnect
+!.local/bin/wallpaper-rotate
+!.local/bin/waybar-disk
+!.local/bin/waybar-weather
