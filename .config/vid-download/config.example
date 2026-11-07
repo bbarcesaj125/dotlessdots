@@ -1,0 +1,4 @@
+# Copy this file to config and set your download directory.
+# The real config is ignored by Git.
+
+DOWNLOAD_DIR="$HOME/Videos"
