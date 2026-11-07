@@ -6,7 +6,6 @@
 !.local/bin/display-scale
 !.local/bin/dotfiles
 !.local/bin/drivesync
-!.local/bin/iptv
 !.local/bin/power-menu
 !.local/bin/rsyncvps
 !.local/bin/thunarmpvsearch
@@ -15,3 +14,9 @@
 !.local/bin/wallpaper-rotate
 !.local/bin/waybar-disk
 !.local/bin/waybar-weather
+
+# Local credentials and machine-specific settings.
+.config/iptv/
+.config/rsyncvps/
+.config/vid-download/
+.config/wallpaper-changer/config
