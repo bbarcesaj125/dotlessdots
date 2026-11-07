@@ -1,0 +1,408 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# ==============================================================================
+# Global Configuration & Environment
+# ==============================================================================
+
+DRY_RUN=false
+STARTUP_DELAY=0
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/wallpapers/online"
+MAX_CACHE_FILES=100
+WALLPAPER_INTERVAL=1200
+DOWNLOAD_INTERVAL=600
+
+usage() {
+    cat <<EOF
+Usage: $(basename "$0") [OPTIONS] [LOCAL_WALLPAPER_DIR]
+
+Rotate wallpapers from the online cache and a local fallback directory.
+
+Options:
+  --startup-delay SECONDS   Wait before the first rotation (default: 0)
+  --dry-run                 Print wallpapers without applying them
+  -h, --help                Show this help
+EOF
+}
+
+die() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+require_cmd() {
+    command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+# Keep the existing config path so the Unsplash key stays where it is.
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/wallpaper-changer/config"
+
+LOCAL_FALLBACK_DIR=""
+while (($#)); do
+    case "$1" in
+        --startup-delay)
+            STARTUP_DELAY="${2:?--startup-delay requires a value}"
+            shift 2
+            ;;
+        --dry-run)
+            DRY_RUN=true
+            shift
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        *)
+            LOCAL_FALLBACK_DIR="$1"
+            shift
+            ;;
+    esac
+done
+
+[[ "$STARTUP_DELAY" =~ ^[0-9]+$ ]] || die "--startup-delay must be a non-negative integer"
+LOCAL_FALLBACK_DIR="${LOCAL_FALLBACK_DIR:-$HOME/Pictures/Pictures/Wallpapers/99 Most Amazing Collection of Ultra HD 4K Computer Wallpaper - 6709 [ECLiPSE]}"
+
+if [[ -f "$CONFIG_FILE" ]]; then
+    # Load environment variables (e.g., UNSPLASH_ACCESS_KEY) from config
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+fi
+
+for cmd in awww curl file find shuf; do
+    require_cmd "$cmd"
+done
+
+# ==============================================================================
+# Unsplash Settings
+# ==============================================================================
+
+# Unsplash API key (can be populated via CONFIG_FILE or shell environment)
+UNSPLASH_ACCESS_KEY="${UNSPLASH_ACCESS_KEY:-}"
+
+# Search categories randomly selected for each download attempt
+CATEGORIES=(
+    "nature,landscape"
+    "minimal,dark"
+    "architecture,cityscape"
+    "space,galaxy"
+    "abstract,texture"
+    "cyberpunk,neon"
+)
+
+# ==============================================================================
+# Temporary Directory & Cleanup Setup
+# ==============================================================================
+
+# Create an isolated temporary directory for downloads and status markers
+TEMP_DIR=$(mktemp -d -t wallpaper_fetch.XXXXXX) || {
+    echo "Error: Failed to create temporary directory." >&2
+    exit 1
+}
+
+# Remove temporary directory on script exit
+cleanup() {
+    [[ -n "${TEMP_DIR:-}" && -d "$TEMP_DIR" ]] || return 0
+    find "$TEMP_DIR" -mindepth 1 -delete 2>/dev/null || true
+    rmdir "$TEMP_DIR" 2>/dev/null || true
+}
+
+# Ensure cache directory exists before execution
+if ! mkdir -p -- "$CACHE_DIR"; then
+    echo "Error: Failed to create cache directory: $CACHE_DIR" >&2
+    exit 1
+fi
+
+# Configure awww transition parameters
+export AWWW_TRANSITION_FPS=144
+export AWWW_TRANSITION_STEP=2
+export AWWW_TRANSITION_TYPE=random
+
+# ==============================================================================
+# Helper Functions
+# ==============================================================================
+
+# Apply a wallpaper, or print it in dry-run mode
+apply_wallpaper() {
+    local wallpaper="$1"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        printf 'Would set wallpaper: %s\n' "$wallpaper" >&2
+        return 0
+    fi
+
+    awww img -- "$wallpaper"
+}
+
+# Check that a file exists, is non-empty, and matches a supported image MIME type
+is_valid_image() {
+    local file="$1"
+
+    [[ -s "$file" ]] || return 1
+
+    local mime
+    mime=$(file --mime-type -b -- "$file" 2>/dev/null) || mime=""
+
+    case "$mime" in
+        image/jpeg|image/png|image/webp)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Fetch a random wallpaper image from the Unsplash REST API
+fetch_online_wallpaper() {
+    [[ -n "$UNSPLASH_ACCESS_KEY" ]] || return 1
+
+    # Select a random category query
+    local random_index=$(( RANDOM % ${#CATEGORIES[@]} ))
+    local query="${CATEGORIES[$random_index]}"
+
+    local tmp_file="$TEMP_DIR/download_$(date +%s)_$RANDOM.tmp"
+    local target_file="$CACHE_DIR/unsplash_$(date +%s)_$RANDOM.jpg"
+    local api_url="https://api.unsplash.com/photos/random?query=${query}&orientation=landscape"
+
+    local api_json
+    local http_status
+
+    # Query API and capture response payload alongside HTTP status code
+    api_json=$(curl -sS \
+        --max-time 10 \
+        --connect-timeout 5 \
+        -w '\n%{http_code}' \
+        -H "Authorization: Client-ID $UNSPLASH_ACCESS_KEY" \
+        "$api_url" 2>/dev/null) || api_json=""
+
+    # Extract HTTP status code from the final line
+    http_status=$(printf '%s\n' "$api_json" | tail -n 1)
+
+    # Strip the HTTP status code from the JSON payload
+    api_json=$(printf '%s\n' "$api_json" | sed '$d')
+
+    # --------------------------------------------------------------------------
+    # Evaluate HTTP Response Code
+    # --------------------------------------------------------------------------
+
+    case "$http_status" in
+
+        200)
+            # Successful API request
+            ;;
+
+        401)
+            echo "Error: Unsplash API authentication failed (HTTP 401)." >&2
+
+            # File-based flag prevents repeated notifications across process forks
+            if [[ ! -f "$TEMP_DIR/notified_401" ]]; then
+                touch "$TEMP_DIR/notified_401"
+                notify-send \
+                    -u critical \
+                    -i dialog-error \
+                    "Wallpaper Script Error" \
+                    "Unsplash API key is invalid, revoked, or unauthorized (401)."
+            fi
+
+            return 1
+            ;;
+
+        429)
+            echo "Warning: Unsplash API rate limit exceeded (HTTP 429)." >&2
+
+            notify-send \
+                -u normal \
+                -i dialog-warning \
+                "Wallpaper Script Warning" \
+                "Unsplash API rate limit exceeded (429)."
+
+            return 1
+            ;;
+
+        000|"")
+            # Network failure, timeout, or DNS resolution issue
+            echo "Warning: No internet connection or request timed out." >&2
+            return 1
+            ;;
+
+        *)
+            echo "Warning: Unsplash API returned HTTP status $http_status." >&2
+
+            notify-send \
+                -u low \
+                -i dialog-warning \
+                "Wallpaper Script Warning" \
+                "Unsplash API request failed (HTTP $http_status)."
+
+            return 1
+            ;;
+
+    esac
+
+    # --------------------------------------------------------------------------
+    # Extract Image URL from JSON Response
+    # --------------------------------------------------------------------------
+
+    local image_url
+
+    image_url=$(
+        printf '%s\n' "$api_json" |
+            grep -o '"full":"[^"]*' |
+            cut -d'"' -f4
+    ) || image_url=""
+
+    if [[ -z "$image_url" ]]; then
+        echo "Warning: Failed to parse image URL from Unsplash response." >&2
+        return 1
+    fi
+
+    # --------------------------------------------------------------------------
+    # Download Binary Image File
+    # --------------------------------------------------------------------------
+
+    if ! curl -fsSL \
+        --max-time 15 \
+        --connect-timeout 5 \
+        "$image_url" \
+        -o "$tmp_file"; then
+
+        rm -f -- "$tmp_file"
+        echo "Warning: Failed to download wallpaper binary." >&2
+        return 1
+    fi
+
+    # --------------------------------------------------------------------------
+    # Validate Downloaded File
+    # --------------------------------------------------------------------------
+
+    if ! is_valid_image "$tmp_file"; then
+        echo "Warning: Downloaded file is not a valid image format." >&2
+        rm -f -- "$tmp_file"
+        return 1
+    fi
+
+    # --------------------------------------------------------------------------
+    # Move Validated File into Persistent Cache
+    # --------------------------------------------------------------------------
+
+    if ! mv -- "$tmp_file" "$target_file"; then
+        echo "Warning: Failed to move wallpaper into cache." >&2
+        rm -f -- "$tmp_file"
+        return 1
+    fi
+
+    printf 'Downloaded wallpaper [%s]\n' "$query" >&2
+
+    # --------------------------------------------------------------------------
+    # Enforce Maximum Cache Limit
+    # --------------------------------------------------------------------------
+
+    local count
+    count=$(find "$CACHE_DIR" -maxdepth 1 -type f -print | wc -l)
+
+    if [[ "$count" -gt "$MAX_CACHE_FILES" ]]; then
+        find "$CACHE_DIR" \
+            -maxdepth 1 \
+            -type f \
+            -printf '%T@ %p\0' |
+            sort -z -n |
+            head -z -n 1 |
+            cut -z -d' ' -f2- |
+            xargs -0 -r rm -f --
+    fi
+}
+
+# Continuously fetch wallpapers in a background loop
+background_fetcher() {
+    while true; do
+        fetch_online_wallpaper || true
+        sleep "$DOWNLOAD_INTERVAL"
+    done
+}
+
+# Select a random valid image file from the specified directory
+get_random_image_from() {
+    local dir="$1"
+
+    [[ -d "$dir" ]] || return 1
+
+    find "$dir" \
+        -maxdepth 1 \
+        -type f \
+        -print0 2>/dev/null |
+        while IFS= read -r -d '' file; do
+            if is_valid_image "$file"; then
+                printf '%s\0' "$file"
+            fi
+        done |
+        shuf -z -n 1 |
+        while IFS= read -r -d '' file; do
+            printf '%s\n' "$file"
+        done
+}
+
+# ==============================================================================
+# Process Lifetime & Signal Traps
+# ==============================================================================
+
+FETCHER_PID=""
+
+# Spawn background fetcher process if API key is present
+if [[ -n "$UNSPLASH_ACCESS_KEY" ]]; then
+    background_fetcher &
+    FETCHER_PID=$!
+else
+    printf 'Notice: UNSPLASH_ACCESS_KEY is empty.\n' >&2
+    printf 'Online fetching disabled; using local/cache wallpapers only.\n' >&2
+fi
+
+# Terminate background tasks and clean up temporary directory
+cleanup_all() {
+    if [[ -n "$FETCHER_PID" ]]; then
+        kill "$FETCHER_PID" 2>/dev/null || true
+        wait "$FETCHER_PID" 2>/dev/null || true
+    fi
+
+    cleanup
+}
+
+trap cleanup_all EXIT
+trap 'exit 130' SIGINT
+trap 'exit 143' SIGTERM
+
+# ==============================================================================
+# Main Rotation Loop
+# ==============================================================================
+
+printf 'Wallpaper manager running...\n' >&2
+printf 'Local directory: %s\n' "$LOCAL_FALLBACK_DIR" >&2
+printf 'Online cache:    %s\n' "$CACHE_DIR" >&2
+
+# Let awww restore the previous wallpaper before the first rotation.
+if (( STARTUP_DELAY > 0 )); then
+    sleep "$STARTUP_DELAY"
+fi
+
+while true; do
+
+    WALLPAPER=""
+
+    # 1. Try selecting a wallpaper from the online cache
+    WALLPAPER=$(get_random_image_from "$CACHE_DIR") || true
+
+    # 2. Fall back to local wallpaper directory if cache is empty
+    if [[ -z "$WALLPAPER" ]]; then
+        WALLPAPER=$(get_random_image_from "$LOCAL_FALLBACK_DIR") || true
+    fi
+
+    # 3. Apply selected wallpaper using awww
+    if [[ -n "$WALLPAPER" ]]; then
+        printf 'Setting wallpaper: %s\n' "$WALLPAPER" >&2
+        apply_wallpaper "$WALLPAPER" || printf 'Warning: failed to set wallpaper: %s\n' "$WALLPAPER" >&2
+    else
+        printf 'Warning: No valid wallpapers found in online cache or local fallback directory!\n' >&2
+    fi
+
+    sleep "$WALLPAPER_INTERVAL"
+
+done
