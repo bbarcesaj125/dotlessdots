@@ -1,0 +1,61 @@
+#!/bin/bash
+
+# Define the download directory
+DOWNLOAD_DIR="$HOME/HDD/Videos/Service"
+
+# Define the notification title
+NOTIFICATION_TITLE="Video Download"
+
+# Ensure the download directory exists
+mkdir -p "$DOWNLOAD_DIR"
+
+# Get the last entry from the clipboard using wl-paste
+clipboard_content=$(wl-paste)
+
+# Check if the clipboard content is a youtube-dl command
+if [[ "$clipboard_content" =~ ^yt-dlp.* ]]; then
+    # Extract the URL from the command using sed
+    video_url=$(echo "$clipboard_content" | sed -n 's/.*"\([^"]*\)"$/\1/p')
+
+    # Check if a URL was successfully extracted
+    if [[ -n "$video_url" ]]; then
+        echo "Extracted URL: $video_url"
+
+        # Ask the user for the filename
+        read -p "Enter the desired filename: " user_title
+        
+        # Check if a filename was provided, if not, use a default name
+        if [[ -z "$user_title" ]]; then
+            user_title="video_$(date +%Y%m%d_%H%M%S)"
+            echo "No filename provided, using default: $user_title"
+        fi
+
+        # NEW SANITIZATION LOGIC
+        # 1. Normalize spaces and symbols by replacing non-alphanumeric chars with a single space.
+        normalized_title=$(echo "$user_title" | sed -E 's/[^[:alnum:]]+/ /g' | xargs)
+        
+        # 2. Convert to Title Case and replace spaces with underscores.
+        sanitized_filename=""
+        for word in $normalized_title; do
+            capitalized_word="$(tr '[:lower:]' '[:upper:]' <<< "${word:0:1}")$(tr '[:upper:]' '[:lower:]' <<< "${word:1}")"
+            sanitized_filename+="${capitalized_word}_"
+        done
+
+        # 3. Remove the trailing underscore.
+        sanitized_filename="${sanitized_filename%_}"
+
+        # Use yt-dlp to download the video with the sanitized filename and directory
+        yt-dlp -o "$DOWNLOAD_DIR/$sanitized_filename.%(ext)s" "$video_url"
+
+        # Add the notification command
+        notify-send "$NOTIFICATION_TITLE" "Download of \"$user_title\" has finished."
+
+        echo "Download complete. The video is saved as: $sanitized_filename"
+    else
+        notify-send "$NOTIFICATION_TITLE" "Could not extract a valid URL from the command."
+        echo "Could not extract a valid URL from the command. Please try again."
+    fi
+else
+    notify-send "$NOTIFICATION_TITLE" "The clipboard does not contain a valid command."
+    echo "The clipboard content is not a youtube-dl command. Please copy a command and try again."
+fi
