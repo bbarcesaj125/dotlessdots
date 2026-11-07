@@ -1,0 +1,16 @@
+// Startup applications.
+//
+// wallpaper-rotate waits before its first rotation so awww can restore the
+// previous wallpaper at login.
+
+spawn-sh-at-startup r#"waybar -c "$HOME/.config/waybar/waybar.conf""#
+spawn-at-startup "awww-daemon"
+spawn-at-startup "wallpaper-rotate" "--startup-delay" "300"
+spawn-at-startup "/usr/bin/lxqt-policykit-agent"
+spawn-at-startup "mako"
+spawn-at-startup "nm-applet" "--indicator"
+spawn-at-startup "keepassxc" "--minimized"
+spawn-at-startup "wlsunset" "-l" "43.6" "-L" "1.44" "-t" "4000" "-T" "6500"
+spawn-at-startup "swayidle" "-w" "timeout" "900" "niri msg action power-off-monitors" "timeout" "600" "swaylock -f" "before-sleep" "swaylock -f"
+spawn-sh-at-startup "wl-paste --type text --watch cliphist store"
+spawn-sh-at-startup "wl-paste --type image --watch cliphist store"

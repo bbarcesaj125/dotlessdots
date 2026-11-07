@@ -1,0 +1,19 @@
+// Keyboard, touchpad, and focus behavior.
+
+input {
+    keyboard {
+        xkb {
+            layout "de"
+            options "compose:prsc"
+        }
+
+        numlock
+    }
+
+    touchpad {
+        tap
+        accel-speed 0.6
+    }
+
+    focus-follows-mouse max-scroll-amount="0%"
+}

@@ -1,0 +1,42 @@
+// Layout and animation settings.
+
+layout {
+    gaps 12
+    center-focused-column "never"
+    always-center-single-column
+
+    preset-column-widths {
+        proportion 0.33333
+        proportion 0.5
+        proportion 0.66667
+    }
+
+    default-column-width { proportion 0.66667; }
+
+    focus-ring {
+        width 2
+        active-color "#66D9EF"
+        inactive-color "#75715E"
+    }
+
+    border {
+        off
+        width 2
+        active-color "#A6E22E"
+        inactive-color "#75715E"
+        urgent-color "#F92672"
+    }
+
+    shadow {
+        softness 30
+        spread 5
+        offset x=0 y=5
+        color "#0007"
+    }
+
+    struts {
+    }
+}
+
+animations {
+}
