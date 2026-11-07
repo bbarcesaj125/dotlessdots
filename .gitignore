@@ -8,9 +8,7 @@
 !.local/bin/drivesync
 !.local/bin/power-menu
 !.local/bin/rsyncvps
-!.local/bin/thunarmpvsearch
 !.local/bin/vid-download
-!.local/bin/vpnconnect
 !.local/bin/wallpaper-rotate
 !.local/bin/waybar-disk
 !.local/bin/waybar-weather

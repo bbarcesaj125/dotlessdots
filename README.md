@@ -47,7 +47,6 @@ working tree and the `dotfiles` wrapper as the Git frontend.
 | `waybar-weather` | Waybar weather module |
 | `waybar-disk` | Waybar disk usage module |
 | `vid-download` | Downloads a clipboard `yt-dlp` command |
-| `thunarmpvsearch` | Thunar action for searching and previewing videos |
 | `drivesync` | Rclone Google Drive sync |
 | `rsyncvps` | VPS backup helper |
 
