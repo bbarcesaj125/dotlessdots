@@ -1,5 +1,30 @@
 #!/usr/bin/env bash
+set -euo pipefail
 
-# This is a very simple script that runs an rsync command to backup my entire VPS system to my local machine.
+# Backup the VPS to a local directory.
+# Connection details live in an untracked config file.
 
-sudo rsync -aAXH --delete --quiet --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/media/*","/lost+found","/home/*/.gvfs","/var/lib/dhcpcd/*","/swapfile"} -e 'ssh -p 4252 -i /home/yusarch/.ssh/nopw_id' --rsync-path="sudo rsync" ubuntu@51.210.242.53:/ /home/yusarch/HDD/VPSBACKUP --log-file=/home/yusarch/HDD/rsync-vps.log
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/rsyncvps/config"
+
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    printf 'Error: missing config file: %s\n' "$CONFIG_FILE" >&2
+    exit 1
+fi
+
+# shellcheck source=/dev/null
+source "$CONFIG_FILE"
+
+: "${VPS_USER:?VPS_USER is not set}"
+: "${VPS_HOST:?VPS_HOST is not set}"
+: "${VPS_PORT:?VPS_PORT is not set}"
+: "${VPS_SSH_KEY:?VPS_SSH_KEY is not set}"
+: "${VPS_BACKUP_DIR:?VPS_BACKUP_DIR is not set}"
+: "${VPS_LOG_FILE:?VPS_LOG_FILE is not set}"
+
+sudo rsync -aAXH --delete --quiet \
+    --exclude={"/dev/*","/proc/*","/sys/*","/tmp/*","/run/*","/mnt/*","/media/*","/lost+found","/home/*/.gvfs","/var/lib/dhcpcd/*","/swapfile"} \
+    -e "ssh -p ${VPS_PORT} -i ${VPS_SSH_KEY}" \
+    --rsync-path="sudo rsync" \
+    "${VPS_USER}@${VPS_HOST}:/" \
+    "${VPS_BACKUP_DIR}" \
+    --log-file="${VPS_LOG_FILE}"

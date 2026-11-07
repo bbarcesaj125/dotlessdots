@@ -1,12 +1,17 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Define the download directory
-DOWNLOAD_DIR="$HOME/HDD/Videos/Service"
+# Load local settings from an untracked config file.
+CONFIG_FILE="${XDG_CONFIG_HOME:-$HOME/.config}/vid-download/config"
 
-# Define the notification title
+if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck source=/dev/null
+    source "$CONFIG_FILE"
+fi
+
+DOWNLOAD_DIR="${DOWNLOAD_DIR:-$HOME/Videos}"
 NOTIFICATION_TITLE="Video Download"
 
-# Ensure the download directory exists
 mkdir -p "$DOWNLOAD_DIR"
 
 # Get the last entry from the clipboard using wl-paste
@@ -48,14 +53,14 @@ if [[ "$clipboard_content" =~ ^yt-dlp.* ]]; then
         yt-dlp -o "$DOWNLOAD_DIR/$sanitized_filename.%(ext)s" "$video_url"
 
         # Add the notification command
-        notify-send "$NOTIFICATION_TITLE" "Download of \"$user_title\" has finished."
+        notify-send "$NOTIFICATION_TITLE" "Download of \"$user_title\" has finished." || true
 
         echo "Download complete. The video is saved as: $sanitized_filename"
     else
-        notify-send "$NOTIFICATION_TITLE" "Could not extract a valid URL from the command."
+        notify-send "$NOTIFICATION_TITLE" "Could not extract a valid URL from the command." || true
         echo "Could not extract a valid URL from the command. Please try again."
     fi
 else
-    notify-send "$NOTIFICATION_TITLE" "The clipboard does not contain a valid command."
+    notify-send "$NOTIFICATION_TITLE" "The clipboard does not contain a valid command." || true
     echo "The clipboard content is not a youtube-dl command. Please copy a command and try again."
 fi
