@@ -1,0 +1,15 @@
+// Niri general options, environment, hotkey overlay, and screenshot path.
+
+prefer-no-csd
+
+environment {
+    XDG_CURRENT_DESKTOP "niri"
+    XCURSOR_SIZE "24"
+    QT_QPA_PLATFORMTHEME "qt6ct"
+}
+
+hotkey-overlay {
+    skip-at-startup
+}
+
+screenshot-path "~/Pictures/Screenshots/Screenshot from %Y-%m-%d %H-%M-%S.png"

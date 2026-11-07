@@ -1,0 +1,13 @@
+// ╔══════════════════════════════════════════════════════════════════════════════╗
+// ║                              NIRI CONFIG                                     ║
+// ╚══════════════════════════════════════════════════════════════════════════════╝
+//
+// This file is only an index. Edit the files under conf.d/ instead.
+
+include optional=true "conf.d/00-general.kdl"
+include optional=true "conf.d/10-input.kdl"
+include optional=true "conf.d/20-outputs.kdl"
+include optional=true "conf.d/30-layout.kdl"
+include optional=true "conf.d/40-window-rules.kdl"
+include optional=true "conf.d/50-binds.kdl"
+include optional=true "conf.d/60-startup.kdl"

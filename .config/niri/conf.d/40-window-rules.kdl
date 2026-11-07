@@ -1,0 +1,28 @@
+// Window rules.
+
+window-rule {
+    open-maximized false
+    open-maximized-to-edges false
+    open-fullscreen false
+    geometry-corner-radius 5
+    clip-to-geometry true
+}
+
+window-rule {
+    match app-id="firefox"
+    match app-id="gimp"
+    match app-id="codium"
+    match app-id="mpv"
+    match app-id="vlc"
+    match app-id="thunar"
+    match app-id="com.github.johnfactotum.Foliate"
+    match app-id="com.libretro.RetroArch"
+    open-maximized true
+}
+
+// Firefox Picture-in-Picture.
+window-rule {
+    match app-id=r#"firefox$"# title="^Picture-in-Picture$"
+    open-maximized false
+    default-column-width { proportion 0.33333; }
+}
