@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Waybar weather module. Prints one JSON object on stdout.
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    printf 'Usage: %s [LOCATION]\n' "$(basename "$0")" >&2
+    exit 0
+fi
+
+# CONFIGURATION
+LOCATION="${1:-Toulouse}" # Default to Toulouse if no arg provided
+UNIT="m"                  # 'm' for metric, 'u' for USCS
+TIMEOUT=5                 # Seconds to wait for curl
+
+for cmd in curl jq; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        printf '{"text":"n/a","tooltip":"Missing dependency: %s"}\n' "$cmd"
+        exit 0
+    fi
+done
+
+# Map wttr.in codes to Nerd Font icons
+get_icon() {
+    case "$1" in
+        "113") echo "" ;; # Clear/Sunny
+        "116") echo "" ;; # Partly cloudy
+        "119") echo "" ;; # Cloudy
+        "122") echo "" ;; # Overcast
+        "143") echo "" ;; # Mist
+        "176"|"263"|"266"|"293"|"296") echo "" ;; # Patchy rain
+        "182"|"185"|"281"|"284") echo "" ;; # Sleet
+        "200") echo "" ;; # Thundery outbreaks
+        "227"|"230"|"323"|"326"|"329"|"332"|"335"|"338") echo "" ;; # Snow
+        "302"|"305"|"308"|"353"|"356"|"359") echo "" ;; # Heavy rain
+        *) echo "" ;; # Unknown/Default
+    esac
+}
+
+# Fetch data
+# We use format=j1 to get full JSON data
+raw_data=$(curl -s --max-time "$TIMEOUT" "https://wttr.in/${LOCATION}?format=j1&${UNIT}") || raw_data=""
+
+# Check if curl failed or returned non-JSON (like an error page)
+if [[ -z "$raw_data" ]] || ! jq -e . >/dev/null 2>&1 <<<"$raw_data"; then
+    echo '{"text": "󰖪 ", "tooltip": "Weather service unavailable"}'
+    exit 0
+fi
+
+# Extract data using jq
+temp=$(echo "$raw_data" | jq -r '.current_condition[0].temp_C')
+code=$(echo "$raw_data" | jq -r '.current_condition[0].weatherCode')
+desc=$(echo "$raw_data" | jq -r '.current_condition[0].weatherDesc[0].value')
+humidity=$(echo "$raw_data" | jq -r '.current_condition[0].humidity')
+feels_like=$(echo "$raw_data" | jq -r '.current_condition[0].FeelsLikeC')
+
+icon=$(get_icon "$code")
+
+# Create JSON output for Waybar
+# Using Pango markup to color the icon
+# Using a warm yellow/gold that pops against green
+jq -nc \
+    --arg icon "$icon" \
+    --arg temp "$temp" \
+    --arg desc "$desc" \
+    --arg feels "$feels_like" \
+    --arg humidity "$humidity" \
+    '{
+        text: ("<span color=\"#f9e2af\">" + $icon + "</span> " + $temp + "°C"),
+        tooltip: ("<b>" + $desc + "</b>\nFeels like: " + $feels + "°C\nHumidity: " + $humidity + "%")
+    }'
