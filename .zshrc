@@ -72,8 +72,6 @@ alias mongossh="ssh -4 -p 3022 -L 27017:localhost:27017 yusubuntu@127.0.0.1"
 # Tomcat
 alias tomstart="$CATALINA_HOME/bin/startup.sh"
 alias tomstop="$CATALINA_HOME/bin/shutdown.sh"
-# Dotfiles management
-alias dotfiles="/usr/bin/git --git-dir=$HOME/.dotfiles.git/ --work-tree=$HOME"
 
 # Functions
 # Sopcast helper
@@ -119,14 +117,6 @@ kissme () {
 	cd ~
 }
 
-nodewrapper () {
-	DIR="$HOME/Documents/Documents/Manga/mangaDownload/Links/"
-	cd "$DIR"
-	echo "$1"
-	node $HOME/.scripts/mangaScrapper.js "$1" "$2" 2>&1 | tee -a nodelog.log
-	cd ~
-}
-
 # Zip directories into individual zip files
 zipme () {
 	for i in */;
@@ -146,20 +136,6 @@ gtaiv () {
 	WINEDEBUG=-all primusrun wine ./LaunchGTAIV.exe >/dev/null 2>&1
 	compton --config ~/.config/compton.conf -b &
 	cd
-}
-
-# LO Cryptofolio
-cryptofolio () {
-	trap 'kill $!' SIGINT SIGTERM INT EXIT
-	python ~/.scripts/coinMarketCapFetch.py &
-	sleep 5s && localc ~/Dropbox/UbuntuOneStuff/Investment/Cryptofolio.ods
-}
-
-# Binance Fetcher
-binance () {
-	trap 'kill $!' SIGINT SIGTERM INT EXIT
-	python ~/.scripts/binanceDataFetcher.py &
-	sleep 5s && localc ~/Dropbox/UbuntuOneStuff/Investment/binanceData.csv
 }
 
 # Export EDITOR EV
@@ -232,6 +208,9 @@ export EDITOR=vim
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
 plugins=(git)
+
+# Disable auto-update prompt
+zstyle ':omz:update' mode disabled
 
 source $ZSH/oh-my-zsh.sh
 
