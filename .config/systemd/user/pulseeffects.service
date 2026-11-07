@@ -1,0 +1,11 @@
+[Unit]
+Description=Pulseeffects Service
+
+[Service]
+Type=simple
+ExecStart=/home/yusarch/.local/bin/peservice start
+ExecStop=/home/yusarch/.local/bin/peservice stop
+Restart=on-failure
+
+[Install]
+WantedBy=default.target
