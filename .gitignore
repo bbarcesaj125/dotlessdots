@@ -17,6 +17,8 @@
 
 # Local credentials and machine-specific settings.
 .config/iptv/
-.config/rsyncvps/
-.config/vid-download/
+.config/rsyncvps/*
+!.config/rsyncvps/config.example
+.config/vid-download/*
+!.config/vid-download/config.example
 .config/wallpaper-changer/config
