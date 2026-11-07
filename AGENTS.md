@@ -3,7 +3,8 @@
 ## Environment
 
 - OS: Arch Linux.
-- Shell: Bash.
+- Login shell: zsh.
+- Shell scripts: Bash.
 - Init system: systemd.
 - Dotfiles are managed through a bare Git repository:
   `~/.dotfiles.git`
@@ -45,6 +46,10 @@
 
 - The agent may stage files with `dotfiles add` and commit with `dotfiles commit`.
 - Stage and commit only files relevant to the requested task.
+- Never stage unrelated pre-existing changes; list them and leave them alone.
+- Before committing, show or summarize the staged diff.
+- Commit only when the user asks you to commit or approves the changes.
+- Never rewrite history (`rebase`, `commit --amend`, `filter-repo`, `stash`) unless explicitly requested.
 - Never run other Git write operations, in particular:
   - `dotfiles push`
   - `dotfiles reset`
@@ -74,6 +79,14 @@ For any substantial modification or new implementation (e.g., creating a new scr
 - Add a body only when the reason is not obvious.
 - Avoid vague subjects such as `update` or `changes`.
 
+## Pre-Commit Checklist
+
+- Run `dotfiles status` and `dotfiles diff`.
+- Confirm only intended files are staged.
+- Check for secrets, credentials, tokens, private IPs, and machine-specific paths.
+- Run the relevant validator.
+- Use a commit message that follows the conventions above.
+
 ## Configuration Standards
 
 - Prefer minimal, targeted changes.
@@ -83,6 +96,9 @@ For any substantial modification or new implementation (e.g., creating a new scr
 - Prefer native application features over additional tools.
 - Use XDG locations whenever supported.
 - Keep machine-specific settings separate where the application supports configuration includes.
+- Keep machine-specific values in untracked config files.
+- Track a `config.example` with placeholders when useful.
+- Add local config paths to `.gitignore`.
 - Comment why something is configured, not simply what it does.
 - Do not introduce complexity without a concrete benefit.
 
