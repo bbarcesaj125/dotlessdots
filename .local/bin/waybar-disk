@@ -1,0 +1,90 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SSD_PATH="/"
+HDD_PATH="${HOME}/HDD"
+THRESHOLD=10 # GB
+LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/waybar-disk_${UID}.lock"
+
+for cmd in df awk sed; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        printf '{"text":"n/a","tooltip":"Missing dependency: %s","class":"normal"}\n' "$cmd"
+        exit 0
+    fi
+done
+
+# Function to get data: percentage_used, free_space_GB, total_capacity, free_human_readable
+get_disk_info() {
+    # Extract values in KB to ensure we can do math accurately, then convert to GB
+    df -k "$1" | awk 'NR==2 {printf "%d %d %s\n", $5, $4/1024/1024, $2}' | sed 's/%//'
+}
+
+# Fetch data
+read -r ssd_perc ssd_free_gb ssd_total_kb < <(get_disk_info "$SSD_PATH")
+read -r hdd_perc hdd_free_gb hdd_total_kb < <(get_disk_info "$HDD_PATH")
+
+if [[ -z "$ssd_perc" || -z "$hdd_perc" ]]; then
+    printf '{"text":"n/a","tooltip":"Could not read disk usage","class":"normal"}\n'
+    exit 0
+fi
+
+# Get human readable sizes for the tooltip
+ssd_free_human=$(df -h "$SSD_PATH" | awk 'NR==2 {print $4}')
+ssd_total_human=$(df -h "$SSD_PATH" | awk 'NR==2 {print $2}')
+hdd_free_human=$(df -h "$HDD_PATH" | awk 'NR==2 {print $4}')
+hdd_total_human=$(df -h "$HDD_PATH" | awk 'NR==2 {print $2}')
+
+# Calculate remaining percentage
+ssd_rem=$((100 - ssd_perc))
+hdd_rem=$((100 - hdd_perc))
+
+# Logic for Notifications
+ssd_low=false
+hdd_low=false
+[[ "$ssd_free_gb" -lt "$THRESHOLD" ]] && ssd_low=true
+[[ "$hdd_free_gb" -lt "$THRESHOLD" ]] && hdd_low=true
+
+# Determine Class and Notification Message
+class="normal"
+notif_msg=""
+
+if $ssd_low && $hdd_low; then
+    class="urgent"
+    notif_msg="CRITICAL: Both SSD ($ssd_free_human) and HDD ($hdd_free_human) are low!"
+elif $ssd_low; then
+    class="urgent"
+    notif_msg="Warning: SSD is running low ($ssd_free_human remaining)."
+elif $hdd_low; then
+    class="urgent"
+    notif_msg="Warning: HDD is running low ($hdd_free_human remaining)."
+fi
+
+# Send notification if urgent (using a temporary file to avoid spamming every 60s)
+# This ensures you only get one popup per low-space event
+if [[ "$class" == "urgent" ]]; then
+    if [[ ! -f "$LOCK_FILE" ]]; then
+        touch "$LOCK_FILE"
+        if command -v notify-send >/dev/null 2>&1; then
+            notify-send -u critical "Disk Space Alert" "$notif_msg" -i drive-harddisk
+        fi
+    fi
+else
+    # Reset the notification lock if disks are healthy again
+    rm -f "$LOCK_FILE"
+fi
+
+# Icons
+icon_ssd="󱘲"
+icon_hdd="󰋊"
+
+# Format Output
+text="$icon_ssd ${ssd_rem}%  $icon_hdd ${hdd_rem}%"
+tooltip="<b>Disk Statistics</b>\n"
+tooltip+="<b>SSD:</b> $ssd_free_human free / $ssd_total_human total\n"
+tooltip+="<b>HDD:</b> $hdd_free_human free / $hdd_total_human total"
+
+if [[ "$class" == "urgent" ]]; then
+    tooltip+="\n<b>⚠ WARNING: Low Disk Space!</b>"
+fi
+
+echo "{\"text\":\"$text\", \"tooltip\":\"$tooltip\", \"class\":\"$class\"}"
