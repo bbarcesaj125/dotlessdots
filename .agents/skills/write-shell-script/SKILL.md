@@ -6,6 +6,8 @@ description: Use when creating or modifying Bash scripts in my Arch Linux
 
 # Writing shell scripts
 
+Global rules in `AGENTS.md` take precedence over this skill.
+
 1. Plan Mode:
    - For new scripts or substantial refactors, do NOT write code immediately.
    - Present a plan detailing: CLI interface, dependencies, file paths (config/state/cache), data flow, and error handling.
@@ -21,6 +23,10 @@ description: Use when creating or modifying Bash scripts in my Arch Linux
    - Use `[[ ]]` instead of `[ ]`.
    - Prefer `$(...)` over backticks.
    - Use descriptive variable names.
+   - Use `read -r`.
+   - Prefer `printf` over `echo` for data.
+   - Declare function-local variables with `local`.
+   - Use `--` before paths that may begin with `-`.
    - Provide standard `--help` / `-h` and `--dry-run` options where practical.
    - Keep scripts simple and readable.
 
@@ -41,7 +47,9 @@ description: Use when creating or modifying Bash scripts in my Arch Linux
 
 6. Interactive Menus & Processes:
    - Avoid `exec` inside menu loops or launchers if the user is expected to return to the menu after completion.
-   - For interactive `fzf` pickers, embed hidden machine data via tab-separated lines and configure `fzf --delimiter=$'\t' --with-nth=...`.
+   - For interactive fuzzy pickers (`fzf`, `fuzzel`), embed hidden machine data via tab-separated lines.
+   - fzf: `--delimiter=$'\t' --with-nth=...`
+   - fuzzel: `fuzzel --dmenu --prompt 'Select: '`
 
 7. Storage & XDG Locations:
    - Config: `${XDG_CONFIG_HOME:-$HOME/.config}/<app>/`
@@ -57,10 +65,43 @@ description: Use when creating or modifying Bash scripts in my Arch Linux
 
 9. Validation:
    Run the following checks when available:
+   - `bash -n script.sh`
+   - `shellcheck script.sh`
+   - `shfmt -d -i 2 script.sh`
+   - `script --help`
+   - `script --dry-run` for state-changing scripts
+   If a checker is unavailable, state which checks were skipped.
 
-   ```bash
-   bash -n script.sh
-   shellcheck script.sh
-   shfmt -d -i 2 script.sh
-   ```
-   
+10. Minimal template:
+
+    ```bash
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    usage() {
+        printf 'Usage: %s [OPTIONS]\n' "$(basename "$0")" >&2
+    }
+
+    die() {
+        printf 'Error: %s\n' "$*" >&2
+        exit 1
+    }
+
+    require_cmd() {
+        command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+    }
+
+    main() {
+        require_cmd jq
+        # ...
+    }
+
+    main "$@"
+    ```
+
+11. `set -e` pitfalls:
+    - `read` returns non-zero at EOF even when it read data.
+    - `grep` returns 1 when there is no match.
+    - `(( expr ))` returns 1 when the result is 0.
+    - Pipelines and command substitutions propagate failures with `pipefail`.
+    - Handle expected non-zero exits with `if`, `|| true`, or explicit checks.
