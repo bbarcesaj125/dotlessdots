@@ -6,6 +6,7 @@
 !.local/bin/display-scale
 !.local/bin/dotfiles
 !.local/bin/drivesync
+!.local/bin/iptv
 !.local/bin/power-menu
 !.local/bin/rsyncvps
 !.local/bin/vid-download
@@ -14,7 +15,8 @@
 !.local/bin/waybar-weather
 
 # Local credentials and machine-specific settings.
-.config/iptv/
+.config/iptv/*
+!.config/iptv/config.example
 .config/rsyncvps/*
 !.config/rsyncvps/config.example
 .config/vid-download/*

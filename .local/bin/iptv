@@ -1,0 +1,585 @@
+#!/usr/bin/env bash
+#
+# Disclaimer
+#
+# This is merely a small command-line IPTV client intended for use with
+# public and legal IPTV subscriptions. It does not provide, host, or endorse
+# any specific provider, and it ships with no servers, credentials, or channel
+# lists. Users are responsible for ensuring that the services they connect to
+# are legal in their jurisdiction.
+
+set -euo pipefail
+
+CONFIG="$HOME/.config/iptv/config"
+STATE_DIR="$HOME/.config/iptv"
+STATE_FILE="$STATE_DIR/state"
+RECENT_FILE="$STATE_DIR/recent.tsv"
+CACHE_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/iptv"
+CACHE_TTL="${CACHE_TTL:-86400}" # 24 hours in seconds
+MAX_RECENT=30
+RUNTIME_SERVER_FILE="${XDG_RUNTIME_DIR:-/tmp}/iptv_current_server_${UID}"
+
+# ----------------------------------------------------------------------
+# Dependency and config verification
+# ----------------------------------------------------------------------
+
+check_dependencies() {
+    local missing=()
+    local cmd
+    for cmd in curl jq fzf mpv awk; do
+        if ! command -v "$cmd" &>/dev/null; then
+            missing+=("$cmd")
+        fi
+    done
+
+    if (( ${#missing[@]} > 0 )); then
+        echo "Error: Missing required commands: ${missing[*]}" >&2
+        echo "Install them using: pacman -S ${missing[*]}" >&2
+        exit 1
+    fi
+}
+
+check_dependencies
+
+if [[ ! -f "$CONFIG" ]]; then
+    echo "Error: Configuration file not found at $CONFIG" >&2
+    exit 1
+fi
+
+source "$CONFIG"
+
+if [[ -z "${USERNAME:-}" ]] || [[ -z "${PASSWORD:-}" ]] || [[ ${#SERVERS[@]} -eq 0 ]]; then
+    echo "Error: Config must define USERNAME, PASSWORD, and at least one server in SERVERS array." >&2
+    exit 1
+fi
+
+# ----------------------------------------------------------------------
+# State & Server Management
+# ----------------------------------------------------------------------
+
+load_state() {
+    mkdir -p "$STATE_DIR"
+    mkdir -p "$CACHE_DIR"
+
+    if [[ ! -f "$STATE_FILE" ]]; then
+        echo 0 > "$STATE_FILE"
+    fi
+
+    PREFERRED=$(<"$STATE_FILE")
+
+    # Reset invalid state
+    if ! [[ "$PREFERRED" =~ ^[0-9]+$ ]] || (( PREFERRED >= ${#SERVERS[@]} )); then
+        PREFERRED=0
+        echo 0 > "$STATE_FILE"
+    fi
+
+    CURRENT_SERVER="$PREFERRED"
+    echo "$CURRENT_SERVER" > "$RUNTIME_SERVER_FILE"
+}
+
+get_current_server() {
+    if [[ -f "$RUNTIME_SERVER_FILE" ]]; then
+        local val
+        val=$(<"$RUNTIME_SERVER_FILE")
+        if [[ "$val" =~ ^[0-9]+$ ]] && (( val < ${#SERVERS[@]} )); then
+            CURRENT_SERVER="$val"
+            return 0
+        fi
+    fi
+    CURRENT_SERVER="$PREFERRED"
+}
+
+set_current_server() {
+    local index="$1"
+    local permanent="${2:-false}"
+
+    CURRENT_SERVER="$index"
+    echo "$index" > "$RUNTIME_SERVER_FILE"
+
+    if [[ "$permanent" == "true" ]]; then
+        PREFERRED="$index"
+        echo "$index" > "$STATE_FILE"
+    fi
+}
+
+# ----------------------------------------------------------------------
+# Cache Management
+# ----------------------------------------------------------------------
+
+init_cache() {
+    mkdir -p "$CACHE_DIR"
+}
+
+is_cache_valid() {
+    local cache_file="$1"
+    local ttl="${2:-$CACHE_TTL}"
+
+    if [[ -f "$cache_file" ]]; then
+        local now mtime age
+        now=$(date +%s)
+        mtime=$(stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+        age=$(( now - mtime ))
+        if (( age < ttl )); then
+            return 0
+        fi
+    fi
+    return 1
+}
+
+fetch_cached_api() {
+    local cache_file="$1"
+    local action="$2"
+    shift 2
+
+    init_cache
+
+    if is_cache_valid "$cache_file"; then
+        cat "$cache_file"
+        return 0
+    fi
+
+    local response
+    if response=$(request_api "$action" "$@"); then
+        if [[ -n "$response" ]] && jq -e . >/dev/null 2>&1 <<< "$response"; then
+            printf '%s' "$response" > "$cache_file"
+        fi
+        printf '%s' "$response"
+        return 0
+    fi
+
+    # Fall back to existing cached data if network request failed
+    if [[ -f "$cache_file" ]]; then
+        echo "⚠ Network request failed, using cached data." >&2
+        cat "$cache_file"
+        return 0
+    fi
+
+    return 1
+}
+
+clear_cache() {
+    if [[ -d "$CACHE_DIR" ]]; then
+        local f
+        for f in "$CACHE_DIR"/*.json; do
+            [[ -e "$f" ]] && rm -f "$f"
+        done
+    fi
+    echo "✓ Cache cleared." >&2
+    read -rp "Press Enter..." >&2
+}
+
+# ----------------------------------------------------------------------
+# Recent Channels Management
+# ----------------------------------------------------------------------
+
+add_recent_channel() {
+    local stream_id="$1"
+    local channel_name="$2"
+    local category_name="${3:-Live}"
+
+    mkdir -p "$STATE_DIR"
+
+    local temp_file
+    temp_file=$(mktemp "${STATE_DIR}/recent.XXXXXX")
+
+    # Put this channel at the top
+    printf '%s\t%s\t%s\t%s\n' "$stream_id" "$channel_name" "$category_name" "$(date +%s)" > "$temp_file"
+
+    # Append existing entries, filtering out duplicates of this stream_id
+    if [[ -f "$RECENT_FILE" ]]; then
+        awk -F'\t' -v id="$stream_id" '$1 != id { print }' "$RECENT_FILE" | head -n "$((MAX_RECENT - 1))" >> "$temp_file"
+    fi
+
+    mv "$temp_file" "$RECENT_FILE"
+}
+
+show_recent_channels() {
+    if [[ ! -f "$RECENT_FILE" ]] || [[ ! -s "$RECENT_FILE" ]]; then
+        echo "No recently viewed channels." >&2
+        read -rp "Press Enter..." >&2
+        return 0
+    fi
+
+    while true; do
+        if [[ ! -f "$RECENT_FILE" ]] || [[ ! -s "$RECENT_FILE" ]]; then
+            return 0
+        fi
+
+        local choices=()
+        local stream_id ch_name cat_name ts display_text
+        while IFS=$'\t' read -r stream_id ch_name cat_name ts || [[ -n "$stream_id" ]]; do
+            [[ -z "$stream_id" ]] && continue
+            display_text="$ch_name"
+            if [[ -n "$cat_name" ]]; then
+                display_text="$ch_name  [$cat_name]"
+            fi
+            choices+=("$stream_id"$'\t'"$display_text"$'\t'"$ch_name"$'\t'"$cat_name")
+        done < "$RECENT_FILE"
+
+        if (( ${#choices[@]} == 0 )); then
+            return 0
+        fi
+
+        local selection
+        selection=$(
+            printf '%s\n' "${choices[@]}" |
+                choose "⭐ Recent >" --delimiter=$'\t' --with-nth=2
+        ) || return 0
+
+        stream_id=$(printf '%s' "$selection" | cut -f1)
+        ch_name=$(printf '%s' "$selection" | cut -f3)
+        cat_name=$(printf '%s' "$selection" | cut -f4)
+
+        play_live_stream "$stream_id" "$ch_name" "$cat_name"
+    done
+}
+
+# ----------------------------------------------------------------------
+# UI
+# ----------------------------------------------------------------------
+
+choose() {
+    local prompt="$1"
+    shift
+
+    fzf \
+        --layout=reverse \
+        --border \
+        --height=100% \
+        --prompt="$prompt " \
+        --cycle \
+        --no-multi \
+        "$@"
+}
+
+# ----------------------------------------------------------------------
+# Xtream API
+# ----------------------------------------------------------------------
+
+api_request() {
+    local server="$1"
+    local action="$2"
+    shift 2
+
+    local base_url="${server%/}"
+
+    curl -fsS \
+        --connect-timeout 5 \
+        --max-time 20 \
+        --get "$base_url/player_api.php" \
+        --data-urlencode "username=$USERNAME" \
+        --data-urlencode "password=$PASSWORD" \
+        --data-urlencode "action=$action" \
+        "$@"
+}
+
+# ----------------------------------------------------------------------
+# Server management
+# ----------------------------------------------------------------------
+
+server_selection() {
+    local choices=()
+    local i
+
+    get_current_server
+
+    for i in "${!SERVERS[@]}"; do
+        local mark=" "
+        if (( i == PREFERRED )); then
+            mark="★"
+        fi
+        choices+=("$i"$'\t'"$mark Server $((i + 1))    ${SERVERS[$i]}")
+    done
+
+    printf '%s\n' "${choices[@]}" |
+        choose "⚙ Server >" --delimiter=$'\t' --with-nth=2
+}
+
+get_server_index() {
+    local selection="$1"
+    local idx
+    idx=$(cut -f1 <<< "$selection")
+
+    if [[ "$idx" =~ ^[0-9]+$ ]] && (( idx < ${#SERVERS[@]} )); then
+        echo "$idx"
+        return 0
+    fi
+
+    return 1
+}
+
+set_server_manually() {
+    local selection
+    local index
+
+    selection=$(server_selection) || return 0
+
+    index=$(get_server_index "$selection") || return 0
+
+    set_current_server "$index" true
+
+    echo >&2
+    echo "✓ Preferred server:" >&2
+    echo "  ${SERVERS[$index]}" >&2
+    echo >&2
+
+    read -rp "Press Enter..." >&2
+}
+
+choose_failover_server() {
+    local choices=()
+    local i
+
+    get_current_server
+
+    for i in "${!SERVERS[@]}"; do
+        [[ "$i" == "$CURRENT_SERVER" ]] && continue
+        choices+=("$i"$'\t'"Server $((i + 1))    ${SERVERS[$i]}")
+    done
+
+    if (( ${#choices[@]} == 0 )); then
+        return 1
+    fi
+
+    printf '%s\n' "${choices[@]}" |
+        choose "⚠ Server unavailable >" --delimiter=$'\t' --with-nth=2
+}
+
+test_server() {
+    local index="$1"
+    local action="$2"
+    shift 2
+
+    local response
+
+    response=$(api_request \
+        "${SERVERS[$index]}" \
+        "$action" \
+        "$@" 2>/dev/null) || return 1
+
+    jq -e . >/dev/null 2>&1 <<< "$response" || return 1
+
+    printf '%s' "$response"
+}
+
+request_api() {
+    local action="$1"
+    shift
+
+    get_current_server
+
+    local response
+
+    # --------------------------------------------------------------
+    # First attempt: current server
+    # --------------------------------------------------------------
+
+    if response=$(test_server "$CURRENT_SERVER" "$action" "$@" 2>/dev/null); then
+        printf '%s' "$response"
+        return 0
+    fi
+
+    # --------------------------------------------------------------
+    # Current server failed
+    # --------------------------------------------------------------
+
+    echo >&2
+    echo "⚠ Server is unavailable:" >&2
+    echo "  ${SERVERS[$CURRENT_SERVER]}" >&2
+    echo >&2
+
+    local selection
+    selection=$(choose_failover_server) || return 1
+
+    local index
+    index=$(get_server_index "$selection") || return 1
+
+    # --------------------------------------------------------------
+    # Test selected server
+    # --------------------------------------------------------------
+
+    echo "Testing ${SERVERS[$index]}..." >&2
+
+    if ! response=$(test_server "$index" "$action" "$@" 2>/dev/null); then
+        echo >&2
+        echo "✗ Server failed:" >&2
+        echo "  ${SERVERS[$index]}" >&2
+        echo >&2
+        read -rp "Press Enter..." >&2
+        return 1
+    fi
+
+    echo >&2
+    echo "✓ Server works:" >&2
+    echo "  ${SERVERS[$index]}" >&2
+    echo >&2
+
+    # --------------------------------------------------------------
+    # Ask whether to remember it
+    # --------------------------------------------------------------
+
+    local remember
+    remember=$(printf '%s\n' \
+        "Yes — make this the preferred server" \
+        "No — use it this time only" |
+        choose "Preferred server >") || {
+            set_current_server "$index" false
+            printf '%s' "$response"
+            return 0
+        }
+
+    if [[ "$remember" == Yes* ]]; then
+        set_current_server "$index" true
+        echo "✓ Preferred server updated." >&2
+    else
+        set_current_server "$index" false
+    fi
+
+    printf '%s' "$response"
+}
+
+# ----------------------------------------------------------------------
+# Live TV
+# ----------------------------------------------------------------------
+
+show_live_categories() {
+    local cache_file="$CACHE_DIR/categories.json"
+    local data
+    local selection
+    local category_name
+    local category_id
+
+    data=$(fetch_cached_api "$cache_file" "get_live_categories") || return 0
+
+    while true; do
+        selection=$(
+            printf '%s' "$data" |
+                jq -r '.[] | [.category_name, .category_id] | @tsv' |
+                choose "📺 Live TV >" --delimiter=$'\t' --with-nth=1
+        ) || return 0
+
+        category_name=$(printf '%s' "$selection" | cut -f1)
+        category_id=$(printf '%s' "$selection" | cut -f2)
+
+        show_live_channels "$category_id" "$category_name"
+    done
+}
+
+show_live_channels() {
+    local category_id="$1"
+    local category_name="$2"
+
+    local cache_file="$CACHE_DIR/streams_${category_id}.json"
+    local data
+    local selection
+    local stream_id
+    local channel_name
+
+    echo "Loading $category_name..." >&2
+
+    data=$(
+        fetch_cached_api "$cache_file" \
+            "get_live_streams" \
+            --data-urlencode "category_id=$category_id"
+    ) || return 0
+
+    while true; do
+        selection=$(
+            printf '%s' "$data" |
+                jq -r '.[] | [.name, .stream_id] | @tsv' |
+                choose "📺 $category_name >" --delimiter=$'\t' --with-nth=1
+        ) || return 0
+
+        channel_name=$(printf '%s' "$selection" | cut -f1)
+        stream_id=$(printf '%s' "$selection" | cut -f2)
+
+        play_live_stream "$stream_id" "$channel_name" "$category_name"
+    done
+}
+
+play_live_stream() {
+    local stream_id="$1"
+    local channel_name="${2:-Live Stream}"
+    local category_name="${3:-Live TV}"
+
+    # Record to recent channels
+    add_recent_channel "$stream_id" "$channel_name" "$category_name"
+
+    get_current_server
+
+    local base_url="${SERVERS[$CURRENT_SERVER]%/}"
+    local stream_url="$base_url/live/$USERNAME/$PASSWORD/$stream_id.ts"
+
+    mpv "$stream_url" \
+        --stream-lavf-o=reconnect=1 \
+        --stream-lavf-o=reconnect_streamed=1 \
+        --stream-lavf-o=reconnect_delay_max=5 \
+        --stream-lavf-o=timeout=10000000 \
+        --demuxer-max-bytes=50M \
+        --demuxer-readahead-secs=10 \
+        --force-seekable=yes
+}
+
+# ----------------------------------------------------------------------
+# Main menu
+# ----------------------------------------------------------------------
+
+main_menu() {
+    printf '%s\n' \
+        "⭐ Recent Channels" \
+        "📺 Live TV" \
+        "🎬 Movies" \
+        "📺 Series" \
+        "🌐 Server" \
+        "🔄 Refresh Cache" \
+        "❌ Exit" |
+        choose "IPTV >"
+}
+
+main() {
+    if [[ "${1:-}" == "--refresh" ]] || [[ "${1:-}" == "-r" ]]; then
+        clear_cache
+    elif [[ "${1:-}" == "--help" ]] || [[ "${1:-}" == "-h" ]]; then
+        echo "Usage: iptv [OPTIONS]"
+        echo
+        echo "Options:"
+        echo "  -r, --refresh    Clear cached categories and streams"
+        echo "  -h, --help       Show this help message"
+        exit 0
+    fi
+
+    load_state
+
+    while true; do
+        local selection
+        selection=$(main_menu) || exit 0
+
+        case "$selection" in
+            "⭐ Recent Channels")
+                show_recent_channels
+                ;;
+            "📺 Live TV")
+                show_live_categories
+                ;;
+            "🎬 Movies")
+                echo "Movies not implemented yet."
+                read -rp "Press Enter..."
+                ;;
+            "📺 Series")
+                echo "Series not implemented yet."
+                read -rp "Press Enter..."
+                ;;
+            "🌐 Server")
+                set_server_manually
+                ;;
+            "🔄 Refresh Cache")
+                clear_cache
+                ;;
+            "❌ Exit")
+                exit 0
+                ;;
+        esac
+    done
+}
+
+main "$@"
