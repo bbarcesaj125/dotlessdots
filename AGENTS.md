@@ -43,10 +43,9 @@
 
 ### Git Operations
 
-- Never run Git write operations.
-- In particular, never run:
-  - `dotfiles add`
-  - `dotfiles commit`
+- The agent may stage files with `dotfiles add` and commit with `dotfiles commit`.
+- Stage and commit only files relevant to the requested task.
+- Never run other Git write operations, in particular:
   - `dotfiles push`
   - `dotfiles reset`
   - `dotfiles checkout`
@@ -56,7 +55,7 @@
   - `dotfiles log`
   - `dotfiles ls-files`
 
-I review, stage and commit all changes myself.
+I review the history and push changes myself.
 
 ### Plan Mode
 
