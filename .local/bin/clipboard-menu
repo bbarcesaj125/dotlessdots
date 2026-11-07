@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Pick an entry from cliphist with fuzzel and copy it to the clipboard.
+
+if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+    printf 'Usage: %s\n\nSelect a cliphist entry with fuzzel and copy it to the clipboard.\n' "$(basename "$0")" >&2
+    exit 0
+fi
+
+for cmd in cliphist fuzzel wl-copy; do
+    if ! command -v "$cmd" >/dev/null 2>&1; then
+        printf 'Error: missing required command: %s\n' "$cmd" >&2
+        exit 1
+    fi
+done
+
+selection=$(cliphist list | fuzzel --dmenu --prompt 'Clipboard> ') || exit 0
+
+[[ -n "$selection" ]] || exit 0
+
+printf '%s\n' "$selection" | cliphist decode | wl-copy
