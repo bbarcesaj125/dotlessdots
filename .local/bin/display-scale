@@ -1,0 +1,162 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Change or toggle Niri output scaling.
+#
+# Usage:
+#   display-scale --fuzzel
+#   display-scale --toggle <MONITOR|all> [SCALE_A] [SCALE_B]
+#   display-scale --dry-run --toggle eDP-1 1.6 1.0
+
+readonly STATE_DIR="${XDG_RUNTIME_DIR:-/tmp}/niri-scale_${UID}"
+readonly SCALES=("1.0" "1.25" "1.5" "1.6" "2.0")
+DRY_RUN=false
+
+die() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+require_cmd() {
+    command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+usage() {
+    cat <<'EOF'
+Usage: display-scale [--dry-run] <command> [args]
+
+Commands:
+  --fuzzel
+      Interactive monitor and scale picker.
+
+  --toggle <MONITOR|all> [SCALE_A] [SCALE_B]
+      Toggle a monitor between two scales.
+      Defaults: SCALE_A=1.6, SCALE_B=1.0
+
+Options:
+  --dry-run   Print actions without applying them.
+  -h, --help  Show this help.
+EOF
+}
+
+get_current_scale() {
+    local monitor="$1"
+    local live_scale
+
+    live_scale=$(niri msg -j outputs | jq -r --arg m "$monitor" '.[$m].logical.scale // empty' 2>/dev/null) || live_scale=""
+
+    if [[ -n "$live_scale" && "$live_scale" != "null" ]]; then
+        printf '%s\n' "$live_scale"
+    elif [[ -f "$STATE_DIR/$monitor" ]]; then
+        cat "$STATE_DIR/$monitor"
+    else
+        printf '1.0\n'
+    fi
+}
+
+get_connected_monitors() {
+    niri msg -j outputs | jq -r 'keys[]' 2>/dev/null
+}
+
+apply_scale() {
+    local monitor="$1"
+    local scale="$2"
+
+    if [[ "$DRY_RUN" == true ]]; then
+        printf 'Would set %s scale to %s\n' "$monitor" "$scale" >&2
+        return 0
+    fi
+
+    niri msg output "$monitor" scale "$scale"
+    printf '%s\n' "$scale" >"$STATE_DIR/$monitor"
+
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send "Niri Display Scale" "$monitor set to ${scale}x" -t 2000 || true
+    fi
+}
+
+toggle_monitor() {
+    local monitor="$1"
+    local scale_a="${2:-1.6}"
+    local scale_b="${3:-1.0}"
+    local current
+
+    current=$(get_current_scale "$monitor")
+
+    if [[ "$current" == "$scale_a" ]]; then
+        apply_scale "$monitor" "$scale_b"
+    else
+        apply_scale "$monitor" "$scale_a"
+    fi
+}
+
+fuzzel_mode() {
+    require_cmd fuzzel
+
+    local mon_list
+    mon_list=$(get_connected_monitors)
+    [[ -n "$mon_list" ]] || die "could not retrieve connected monitors"
+
+    local target_mon
+    target_mon=$(printf '%s\nAll Monitors\n' "$mon_list" | fuzzel --dmenu --prompt="Select Monitor: ") || exit 0
+    [[ -n "$target_mon" ]] || exit 0
+
+    local scale_choice
+    scale_choice=$(printf '%s\n' "${SCALES[@]}" | fuzzel --dmenu --prompt="Select Scale for $target_mon: ") || exit 0
+    [[ -n "$scale_choice" ]] || exit 0
+
+    if [[ "$target_mon" == "All Monitors" ]]; then
+        local mon
+        while IFS= read -r mon; do
+            [[ -n "$mon" ]] && apply_scale "$mon" "$scale_choice"
+        done <<<"$mon_list"
+    else
+        apply_scale "$target_mon" "$scale_choice"
+    fi
+}
+
+main() {
+    require_cmd niri
+    require_cmd jq
+    mkdir -p "$STATE_DIR"
+
+    local args=()
+    local arg
+    for arg in "$@"; do
+        case "$arg" in
+            --dry-run) DRY_RUN=true ;;
+            *) args+=("$arg") ;;
+        esac
+    done
+    set -- "${args[@]}"
+
+    case "${1:-}" in
+        --fuzzel)
+            fuzzel_mode
+            ;;
+        --toggle)
+            local monitor="${2:-}"
+            [[ -n "$monitor" ]] || die "--toggle requires a monitor name or 'all'"
+            local scale_a="${3:-1.6}"
+            local scale_b="${4:-1.0}"
+
+            if [[ "$monitor" == "all" || "$monitor" == "both" ]]; then
+                local mon
+                while IFS= read -r mon; do
+                    [[ -n "$mon" ]] && toggle_monitor "$mon" "$scale_a" "$scale_b"
+                done < <(get_connected_monitors)
+            else
+                toggle_monitor "$monitor" "$scale_a" "$scale_b"
+            fi
+            ;;
+        -h | --help | "")
+            usage
+            ;;
+        *)
+            usage >&2
+            exit 1
+            ;;
+    esac
+}
+
+main "$@"
