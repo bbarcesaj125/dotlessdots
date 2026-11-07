@@ -6,6 +6,8 @@ description: Use when adding or changing a configuration file for a tool
 
 # Adding or changing a dotfile
 
+Global rules in `AGENTS.md` take precedence over this skill.
+
 1. Work directly on the actual configuration file under $HOME.
    Example: ~/.config/niri/config.kdl.
 
@@ -43,8 +45,10 @@ description: Use when adding or changing a configuration file for a tool
    - Never execute package installation or service-management commands.
 
 8. Validate changes when possible:
-   - Use the application's native configuration checker (e.g., `bash -n`, `hyprctl reload`, `sway -C`, `niri validate`, JSON/CSS linters).
-   - Check syntax and file validity before considering the task complete.
+   - Niri: `niri validate -c ~/.config/niri/config.kdl`
+   - Shell: `bash -n`, `shellcheck`, `shfmt -d -i 2`
+   - Use other native checkers where available.
+   - If a checker is unavailable, state which checks were skipped.
    - Avoid restarting services or killing applications without explicit approval.
 
 9. After making changes:
@@ -53,6 +57,8 @@ description: Use when adding or changing a configuration file for a tool
    - Report every modified, created or deleted path.
    - Explain potential side effects and untested assumptions.
 
-10. Never run Git write operations:
-    - No add, commit, push, reset or checkout.
-    - I handle reviewing and committing changes myself.
+10. Git:
+    - You may stage with `dotfiles add` and commit with `dotfiles commit`.
+    - Do not push, reset, checkout, rebase, amend, or rewrite history.
+    - Follow the commit message standards in `AGENTS.md`.
+    - Stage and commit only files relevant to the requested task.
