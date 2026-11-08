@@ -20,6 +20,12 @@ window-rule {
     open-maximized true
 }
 
+// KeePassXC works better as a floating dialog.
+window-rule {
+    match app-id="org.keepassxc.KeePassXC"
+    open-floating true
+}
+
 // Firefox Picture-in-Picture.
 window-rule {
     match app-id=r#"firefox$"# title="^Picture-in-Picture$"
