@@ -13,6 +13,13 @@
 - Personal executables belong in `~/.local/bin/`.
 - Prefer XDG locations such as `~/.config/` where supported.
 
+## Skills
+
+- Use `add-dotfile` when changing a tracked dotfile.
+- Use `write-shell-script` when writing or modifying a Bash script.
+- Load the relevant skill before starting; its task-specific workflow
+  complements these global rules.
+
 ## Hard Rules
 
 ### Filesystem
@@ -87,52 +94,20 @@ For any substantial modification or new implementation (e.g., creating a new scr
 - Run the relevant validator.
 - Use a commit message that follows the conventions above.
 
-## Configuration Standards
+## General Standards
 
 - Prefer minimal, targeted changes.
 - Preserve existing configuration and conventions.
 - Avoid rewriting entire files when a small modification is sufficient.
 - Avoid unnecessary dependencies.
 - Prefer native application features over additional tools.
-- Use XDG locations whenever supported.
-- Keep machine-specific settings separate where the application supports configuration includes.
-- Keep machine-specific values in untracked config files.
-- Track a `config.example` with placeholders when useful.
-- Add local config paths to `.gitignore`.
 - Comment why something is configured, not simply what it does.
 - Do not introduce complexity without a concrete benefit.
-
-## Shell Script Standards
-
-For Bash scripts:
-
-- Use `#!/usr/bin/env bash`.
-- Use `set -euo pipefail`.
-- Quote variable expansions.
-- Prefer `[[ ]]` over `[ ]`.
-- Prefer `$(...)` over backticks.
-- Use descriptive variable names.
-- Make scripts idempotent.
-- Check required commands with `command -v`.
-- Output stream separation: Send human-facing feedback, logs, warnings, and interactive prompts to stderr (`>&2`). Keep stdout strictly reserved for raw data payloads meant for command substitution (`var=$(...)`).
-- Subshell awareness: Remember that subshells (`$(...)`, pipes `|`) cannot modify parent shell variables. Use file-based runtime sync under `${XDG_RUNTIME_DIR:-/tmp}` when state must cross subshell boundaries.
-- Temporary file safety: Always use `mktemp` for temporary files and clean them up via `trap 'rm -f "$temp_file"' EXIT`. Never hardcode fixed paths in `/tmp`.
-- String and pattern matching: Avoid loose substring globs (e.g., `*Server 1*` colliding with `Server 10`). Use exact matching, regex (`=~`), or delimiter-based fields (`cut`, `awk`).
-- URL and path hygiene: Always strip trailing slashes (`${var%/}`) when concatenating paths or URLs to prevent duplicate slashes.
-- Process lifecycle: Avoid `exec` when a command or media player is expected to return to a caller, menu, or loop.
-- XDG Directory Standard:
-  - Config: `${XDG_CONFIG_HOME:-$HOME/.config}/<app>/`
-  - State (history, favorites): `${XDG_STATE_HOME:-$HOME/.local/state}/<app>/` or `${XDG_CONFIG_HOME}/<app>/`
-  - Cache (ephemeral downloads, API responses): `${XDG_CACHE_HOME:-$HOME/.cache}/<app>/`
-  - Runtime (volatile session state): `${XDG_RUNTIME_DIR:-/tmp}/<app>_${UID}/`
-- Include meaningful error messages sent to stderr.
-- Provide `--dry-run` for operations that modify system state, where practical.
-- Avoid destructive operations and broad filesystem modifications.
-
-Scripts should pass:
-
-```bash
-bash -n script.sh
-shellcheck script.sh
-shfmt -d -i 2 script.sh
-```
+- Use ASCII section headers when a file is long enough to benefit from
+  sections:
+  - Top-level: `# =============================================================================`
+  - Subsection: `# --- Section ---`
+  - Match the file's comment syntax and existing style.
+  - Keep header width and capitalization consistent.
+  - Do not add headers to short files or files that already have an
+    established structure.
