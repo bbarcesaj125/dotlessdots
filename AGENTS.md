@@ -17,6 +17,7 @@
 
 - Use `add-dotfile` when changing a tracked dotfile.
 - Use `write-shell-script` when writing or modifying a Bash script.
+- Use `commit` when staging or committing changes.
 - Load the relevant skill before starting; its task-specific workflow
   complements these global rules.
 
@@ -54,11 +55,10 @@
 - The agent may stage files with `dotfiles add` and commit with `dotfiles commit`.
 - Stage and commit only files relevant to the requested task.
 - Never stage unrelated pre-existing changes; list them and leave them alone.
-- Before committing, show or summarize the staged diff.
 - Commit only when the user asks you to commit or approves the changes.
+- Follow the `commit` skill for grouping, messages, and pre-commit checks.
 - Never rewrite history (`rebase`, `commit --amend`, `filter-repo`, `stash`) unless explicitly requested.
-- Never run other Git write operations, in particular:
-  - `dotfiles push`
+- Never run destructive Git write operations:
   - `dotfiles reset`
   - `dotfiles checkout`
 - Read-only operations are allowed:
@@ -67,7 +67,16 @@
   - `dotfiles log`
   - `dotfiles ls-files`
 
-I review the history and push changes myself.
+### Pushing
+
+- Never push automatically.
+- When a task is complete and committed, offer to push the commit.
+- If I explicitly approve the push, execute `dotfiles push`.
+- Never push without explicit approval for that specific operation.
+- Approval to commit is not approval to push, and approval for one push does not cover later commits.
+- Run `dotfiles push` as a standalone command; never chain it or embed it in a script.
+- Before pushing, show the commits that will be pushed, for example
+  `dotfiles log --oneline @{u}..HEAD`.
 
 ### Plan Mode
 
@@ -76,23 +85,6 @@ For any substantial modification or new implementation (e.g., creating a new scr
 - Present a clear, structured plan first (goal, architecture & file layout, design decisions, edge cases, and step-by-step approach).
 - Wait for explicit user approval before executing the changes.
 - Trivial one-line bug fixes, typo corrections, or minor value adjustments do not require a formal plan.
-
-## Commit Messages
-
-- Use the imperative mood: `add`, `fix`, `remove`, `refactor`.
-- Keep the subject short (50 characters or fewer) and lowercase.
-- Use `<scope>: <summary>` when a scope helps.
-- One logical change per commit.
-- Add a body only when the reason is not obvious.
-- Avoid vague subjects such as `update` or `changes`.
-
-## Pre-Commit Checklist
-
-- Run `dotfiles status` and `dotfiles diff`.
-- Confirm only intended files are staged.
-- Check for secrets, credentials, tokens, private IPs, and machine-specific paths.
-- Run the relevant validator.
-- Use a commit message that follows the conventions above.
 
 ## General Standards
 
