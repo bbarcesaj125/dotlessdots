@@ -37,7 +37,8 @@ description: Use when staging or committing changes in my bare-repo dotfiles
      paths.
    - Run the relevant validator.
 
-5. Commit with a message that follows the conventions below.
+5. Commit with a message that follows the conventions below, including the
+   required co-author trailer.
 
 ## Commit messages
 
@@ -47,6 +48,13 @@ description: Use when staging or committing changes in my bare-repo dotfiles
 - One logical change per commit.
 - Add a body only when the reason is not obvious.
 - Avoid vague subjects such as `update` or `changes`.
+- End every commit with this trailer as the final paragraph:
+  `Co-authored-by: opencode <219766164+opencode-agent[bot]@users.noreply.github.com>`
+- Separate the trailer from the subject with a blank line by passing a second
+  `-m`:
+  `dotfiles commit -m "scope: summary" -m "Co-authored-by: ..."`
+- Keep the trailer last; GitHub only recognizes trailers at the end of the
+  message.
 
 ## Pushing
 
