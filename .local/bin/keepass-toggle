@@ -1,0 +1,79 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Toggle the KeePassXC window under niri.
+#
+# No window          -> spawn keepassxc, which shows the main window.
+# Window elsewhere   -> focus it, niri follows to the window's workspace.
+# Window on screen   -> close it, KeePassXC hides to the tray instead of
+#                       quitting (MinimizeOnClose + tray icon are enabled).
+#
+# Visibility is decided by workspace, not focus: focus-follows-mouse means
+# a window rarely counts as focused when the bind is pressed.
+
+readonly APP_ID="org.keepassxc.KeePassXC"
+DRY_RUN=false
+
+die() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+require_cmd() {
+    command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+usage() {
+    cat <<'EOF'
+Usage: keepass-toggle [--dry-run]
+
+Toggle the KeePassXC window under niri: opens it when hidden, focuses it
+when it is on another workspace, and hides it to the tray when it is on the
+current workspace.
+
+Options:
+  --dry-run   Print the action without applying it.
+  -h, --help  Show this help.
+EOF
+}
+
+run() {
+    printf '%s\n' "$*" >&2
+    [[ $DRY_RUN == true ]] || "$@"
+}
+
+main() {
+    local windows workspaces focused_ws on_screen_id any_id
+
+    while (($# > 0)); do
+        case "$1" in
+            -h | --help) usage; exit 0 ;;
+            --dry-run) DRY_RUN=true ;;
+            *) usage >&2; die "unknown argument: $1" ;;
+        esac
+        shift
+    done
+
+    require_cmd niri
+    require_cmd jq
+
+    windows=$(niri msg -j windows)
+    workspaces=$(niri msg -j workspaces)
+
+    focused_ws=$(jq -r 'first(.[] | select(.is_focused) | .id) // -1' <<<"$workspaces")
+
+    on_screen_id=$(jq -r --arg app "$APP_ID" --argjson ws "$focused_ws" \
+        'first(.[] | select(.app_id == $app and .workspace_id == $ws) | .id)' <<<"$windows")
+    any_id=$(jq -r --arg app "$APP_ID" \
+        'first(.[] | select(.app_id == $app) | .id)' <<<"$windows")
+
+    if [[ -z $any_id ]]; then
+        run niri msg action spawn -- keepassxc
+    elif [[ -n $on_screen_id ]]; then
+        run niri msg action close-window --id "$on_screen_id"
+    else
+        run niri msg action focus-window --id "$any_id"
+    fi
+}
+
+main "$@"
