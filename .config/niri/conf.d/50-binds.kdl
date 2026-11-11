@@ -26,6 +26,10 @@ binds {
         spawn-sh "firefox --no-remote --profile $HOME/.mozilla/firefox/xd9ynxs4.default-release-1648314972579";
     }
 
+    Mod+Alt+K hotkey-overlay-title="KeePassXC: show / hide" {
+        spawn "keepass-toggle";
+    }
+
 
     // ───────────────────────────── Navigation (Focus) ───────────────────────
 
