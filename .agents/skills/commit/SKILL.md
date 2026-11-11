@@ -46,13 +46,18 @@ description: Use when staging or committing changes in my bare-repo dotfiles
 - Keep the subject short (50 characters or fewer) and lowercase.
 - Use `<scope>: <summary>` when a scope helps.
 - One logical change per commit.
-- Add a body only when the reason is not obvious.
+- Add a body unless the change is self-explanatory from the subject and diff.
+- In the body, record the reason: what was wrong, why this approach, and what
+  was deliberately left alone. Do not restate the diff.
+- Wrap body lines at 72 characters. Keep it to a short paragraph or a few
+  lines, not a changelog.
+- Skip the body for typo fixes, one-line bug fixes, and value tweaks. Never
+  pad it with filler.
 - Avoid vague subjects such as `update` or `changes`.
 - End every commit with this trailer as the final paragraph:
   `Co-authored-by: commit-ghost <354659923+commit-ghost@users.noreply.github.com>`
-- Separate the trailer from the subject with a blank line by passing a second
-  `-m`:
-  `dotfiles commit -m "scope: summary" -m "Co-authored-by: ..."`
+- Pass each paragraph as its own `-m` so the blank lines stay blank:
+  `dotfiles commit -m "scope: summary" -m "Why the change was needed." -m "Co-authored-by: ..."`
 - Keep the trailer last; GitHub only recognizes trailers at the end of the
   message.
 
