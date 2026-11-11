@@ -1,0 +1,15 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permissions": [
+    // Always ask before editing, writing, or patching any file.
+    { "action": "edit", "resource": "*", "effect": "ask" },
+    // Always ask before running any shell command.
+    { "action": "shell", "resource": "*", "effect": "ask" }
+  ],
+  // Pinned instead of "random": random only fails over on HTTP 429, so a
+  // provider that returns empty results would silently stick for the session.
+  // TinyFish falls back to keyless when no TINYFISH_API_KEY is set.
+  "websearch": {
+    "provider": "tinyfish"
+  }
+}

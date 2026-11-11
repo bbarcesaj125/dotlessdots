@@ -18,6 +18,7 @@
 # Local credentials and machine-specific settings.
 .config/iptv/*
 !.config/iptv/config.example
+.config/opencode/service.json
 .config/rsyncvps/*
 !.config/rsyncvps/config.example
 .config/vid-download/*
