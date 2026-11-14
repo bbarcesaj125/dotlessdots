@@ -1,0 +1,1034 @@
+#!/usr/bin/env python3
+"""Dedupe and reorganize a KeePassXC database after a LastPass import.
+
+The original database is only ever read. A cleaned copy is produced by
+exporting to KeePass XML, rewriting that tree, and importing it into a brand
+new database file. Every decision is written to a report so the result can be
+audited before it is trusted.
+
+Why XML: keepassxc-cli can export/import full-fidelity XML (groups, TOTP,
+entry history, attachments, custom fields), which is the only way to rewrite
+the tree without pykeepass. Passwords stay in memory; only hashes are compared
+and reported.
+"""
+
+from __future__ import annotations
+
+import argparse
+import base64
+import csv
+import hashlib
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import xml.etree.ElementTree as ET
+from collections import Counter, defaultdict
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from urllib.parse import urlsplit
+
+STATE_HOME = Path(os.environ.get("XDG_STATE_HOME", Path.home() / ".local/state"))
+CONFIG_HOME = Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
+DEFAULT_RULES = CONFIG_HOME / "kpx-tidy/rules.json"
+EMPTY_META_UUID = "AAAAAAAAAAAAAAAAAAAAAA=="
+
+# LastPass leaves these in the URL field instead of a real address.
+APP_SCHEMES = ("androidapp://", "iosapp://", "kp2a://")
+SECURE_NOTE_URLS = {"sn", "http://sn", "https://sn"}
+
+TS_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+class TidyError(Exception):
+    """Fatal, user-facing failure."""
+
+
+# ---------------------------------------------------------------------------
+# Small helpers
+# ---------------------------------------------------------------------------
+
+
+def warn(msg: str) -> None:
+    print(f"warning: {msg}", file=sys.stderr)
+
+
+def info(msg: str) -> None:
+    print(msg, file=sys.stderr)
+
+
+def die(msg: str) -> None:
+    raise TidyError(msg)
+
+
+def sha(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def parse_ts(value: str | None) -> datetime:
+    if not value:
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
+    try:
+        return datetime.strptime(value.strip(), TS_FORMAT).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
+
+
+def now_ts() -> str:
+    return datetime.now(timezone.utc).strftime(TS_FORMAT)
+
+
+# ---------------------------------------------------------------------------
+# XML access
+# ---------------------------------------------------------------------------
+
+
+def strip_namespaces(root: ET.Element) -> None:
+    """KeePass XML has no namespace, but be tolerant if one ever appears."""
+    for elem in root.iter():
+        if isinstance(elem.tag, str) and "}" in elem.tag:
+            elem.tag = elem.tag.split("}", 1)[1]
+
+
+def child(elem: ET.Element | None, tag: str) -> ET.Element | None:
+    if elem is None:
+        return None
+    return elem.find(tag)
+
+
+def child_text(elem: ET.Element | None, tag: str, default: str = "") -> str:
+    found = child(elem, tag)
+    if found is None or found.text is None:
+        return default
+    return found.text
+
+
+def ensure_child(elem: ET.Element, tag: str, index: int | None = None) -> ET.Element:
+    found = elem.find(tag)
+    if found is not None:
+        return found
+    found = ET.SubElement(elem, tag)
+    if index is not None:
+        elem.remove(found)
+        elem.insert(index, found)
+    return found
+
+
+def set_child_text(elem: ET.Element, tag: str, value: str) -> None:
+    set_text(ensure_child(elem, tag), value)
+
+
+def set_text(elem: ET.Element, value: str) -> None:
+    elem.text = value
+
+
+def string_map(entry: ET.Element) -> dict[str, ET.Element]:
+    """Map String Key -> the <Value> element holding it."""
+    values: dict[str, ET.Element] = {}
+    for string in entry.findall("String"):
+        key = child_text(string, "Key")
+        value = child(string, "Value")
+        if key and value is not None:
+            values[key] = value
+    return values
+
+
+def string_value(entry: ET.Element, key: str, default: str = "") -> str:
+    value = string_map(entry).get(key)
+    if value is None or value.text is None:
+        return default
+    return value.text
+
+
+def set_string_value(entry: ET.Element, key: str, value: str) -> None:
+    values = string_map(entry)
+    target = values.get(key)
+    if target is not None:
+        target.text = value
+        return
+    string = ET.SubElement(entry, "String")
+    set_child_text(string, "Key", key)
+    set_child_text(string, "Value", value)
+
+
+# ---------------------------------------------------------------------------
+# URL and title normalization
+# ---------------------------------------------------------------------------
+
+
+def url_key(url: str) -> str:
+    """Collapse a URL to the identity used for dedupe: host (+ app package)."""
+    raw = (url or "").strip()
+    if not raw:
+        return ""
+    lowered = raw.lower()
+    if lowered in SECURE_NOTE_URLS:
+        return "note:secure"
+    for scheme in APP_SCHEMES:
+        if lowered.startswith(scheme):
+            return "app:" + lowered[len(scheme):].strip("/")
+    if "://" not in lowered:
+        lowered = "http://" + lowered
+    try:
+        parts = urlsplit(lowered)
+    except ValueError:
+        return f"raw:{lowered}"
+    host = (parts.hostname or "").strip().strip(".")
+    if not host:
+        return f"raw:{lowered}"
+    if host.startswith("www."):
+        host = host[4:]
+    port = parts.port
+    if port and port not in (80, 443):
+        host = f"{host}:{port}"
+    return host
+
+
+def registrable(host: str) -> str:
+    """Best-effort eTLD+1 without a public-suffix list."""
+    if not host or ":" in host or "app:" in host or host.startswith("raw:") or "." not in host:
+        return host
+    labels = host.split(".")
+    if len(labels) <= 2:
+        return host
+    second_level = {"co", "com", "org", "net", "ac", "gov", "or", "ne", "edu", "gob"}
+    if labels[-2] in second_level and len(labels[-1]) == 2:
+        return ".".join(labels[-3:])
+    return ".".join(labels[-2:])
+
+
+def title_key(title: str) -> str:
+    return re.sub(r"[^a-z0-9]+", " ", (title or "").lower()).strip()
+
+
+# ---------------------------------------------------------------------------
+# Entry model
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Entry:
+    elem: ET.Element
+    uuid: str
+    group_path: tuple[str, ...]
+    title: str
+    username: str
+    password: str
+    url: str
+    notes: str
+    tags: set[str]
+    created: datetime
+    modified: datetime
+    has_totp: bool
+    has_attachment: bool
+    has_protected: bool
+    action: str = ""
+    reason: str = ""
+    category: str = ""
+    moved_from: str = ""
+
+    @property
+    def key(self) -> str:
+        return url_key(self.url)
+
+    @property
+    def pw_hash(self) -> str:
+        return sha(self.password) if self.password else ""
+
+    @property
+    def is_secure_note(self) -> bool:
+        if self.key in ("", "note:secure"):
+            return bool(self.notes or self.title) and not self.password
+        return False
+
+    @property
+    def is_empty(self) -> bool:
+        return not any(
+            (self.title, self.username, self.password, self.url, self.notes)
+        )
+
+    def score(self) -> tuple:
+        """Higher wins when picking the survivor of a duplicate cluster."""
+        return (
+            self.has_totp,
+            self.has_attachment,
+            len(self.password) > 0,
+            len(self.title) > 0,
+            len(self.url) > 0,
+            self.modified.timestamp(),
+            -self.created.timestamp(),
+        )
+
+
+def entry_from(elem: ET.Element, group_path: tuple[str, ...]) -> Entry:
+    uuid = child_text(elem, "UUID")
+    tags_raw = child_text(elem, "Tags")
+    tags = {tag.strip() for tag in tags_raw.split(";") if tag.strip()}
+    times = child(elem, "Times")
+    values = string_map(elem)
+    protected = any(
+        value.get("Protected", "").lower() in ("true", "1") for value in values.values()
+    )
+    keys = {key.lower() for key in values}
+    return Entry(
+        elem=elem,
+        uuid=uuid,
+        group_path=group_path,
+        title=string_value(elem, "Title"),
+        username=string_value(elem, "UserName"),
+        password=string_value(elem, "Password"),
+        url=string_value(elem, "URL"),
+        notes=string_value(elem, "Notes"),
+        tags=tags,
+        created=parse_ts(child_text(times, "CreationTime")),
+        modified=parse_ts(child_text(times, "LastModificationTime")),
+        has_totp=bool({"otp", "totp", "totp seed"} & keys),
+        has_attachment=child(elem, "Binary") is not None,
+        has_protected=protected,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Rules and classification
+# ---------------------------------------------------------------------------
+
+
+def load_rules(path: Path) -> dict:
+    if not path.is_file():
+        die(f"rules file not found: {path}")
+    try:
+        rules = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        die(f"rules file is not valid JSON ({path}): {exc}")
+    rules.setdefault("default_category", "Unsorted")
+    rules.setdefault("domain_categories", {})
+    rules.setdefault("domain_alias", {})
+    rules.setdefault("folder_keywords", [])
+    rules.setdefault("title_keywords", [])
+    rules.setdefault("conflict_policy", "history")
+    rules.setdefault("group_by_site", False)
+    rules.setdefault("drop_empty_entries", True)
+    return rules
+
+
+def keyword_hits(needle: str, pairs: list[list[str]]) -> str | None:
+    lowered = (needle or "").lower()
+    for pattern, category in pairs:
+        if pattern and pattern.lower() in lowered:
+            return category
+    return None
+
+
+def classify(entry: Entry, rules: dict) -> tuple[str, str]:
+    """Return (category, reason). Rules only, never guesses."""
+    alias = rules["domain_alias"].get(entry.key)
+    candidates = [alias] if alias else []
+    candidates.append(entry.key)
+
+    for host in list(candidates):
+        bare = host.split(":")[0] if host else ""
+        while bare:
+            category = rules["domain_categories"].get(bare)
+            if category:
+                return category, f"domain:{bare}"
+            if "." not in bare:
+                break
+            bare = bare.split(".", 1)[1]
+
+    root = registrable(entry.key)
+    if root and root != entry.key:
+        category = rules["domain_categories"].get(root)
+        if category:
+            return category, f"domain:{root}"
+
+    if entry.is_secure_note:
+        return "Secure Notes", "secure-note"
+
+    for part in reversed(entry.group_path):
+        category = keyword_hits(part, rules["folder_keywords"])
+        if category:
+            return category, f"folder:{part}"
+
+    category = keyword_hits(entry.title, rules["title_keywords"])
+    if category:
+        return category, f"title:{entry.title[:40]}"
+
+    if entry.key.startswith("app:"):
+        return "Unsorted", "unmatched:app"
+
+    return rules["default_category"], "unmatched"
+
+
+# ---------------------------------------------------------------------------
+# Reading the database
+# ---------------------------------------------------------------------------
+
+
+def export_xml(db: Path) -> ET.Element:
+    if not db.is_file():
+        die(f"database not found: {db}")
+    if shutil.which("keepassxc-cli") is None:
+        die("keepassxc-cli not found in PATH")
+    info(f"exporting {db} (password prompt follows)")
+    result = subprocess.run(
+        ["keepassxc-cli", "export", "-f", "xml", str(db)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        detail = (result.stderr or "").strip().splitlines()
+        die("export failed: " + (detail[-1] if detail else f"exit {result.returncode}"))
+    try:
+        root = ET.fromstring(result.stdout)
+    except ET.ParseError as exc:
+        die(f"exported XML could not be parsed: {exc}")
+    strip_namespaces(root)
+    del result
+    return root
+
+
+def walk_groups(root: ET.Element) -> tuple[list[Entry], ET.Element, int]:
+    """Return (entries, meta, recycle-bin entries skipped)."""
+    meta = child(root, "Meta")
+    tree = child(root, "Root")
+    if meta is None or tree is None:
+        die("unexpected XML shape: missing Meta or Root")
+    bin_uuid = child_text(meta, "RecycleBinUUID").strip()
+    top = child(tree, "Group")
+    if top is None:
+        die("unexpected XML shape: missing root group")
+
+    entries: list[Entry] = []
+    skipped = 0
+
+    def visit(group: ET.Element, path: tuple[str, ...]) -> None:
+        nonlocal skipped
+        name = child_text(group, "Name")
+        uuid = child_text(group, "UUID")
+        if (bin_uuid and uuid == bin_uuid) or name.lower() in {
+            "recycle bin",
+            "trash",
+            "deleted items",
+        }:
+            skipped += len(list(group.iter("Entry")))
+            return
+        here = (*path, name)
+        for elem in group.findall("Entry"):
+            entries.append(entry_from(elem, here))
+        for sub in group.findall("Group"):
+            visit(sub, here)
+
+    visit(top, ())
+    return entries, meta, skipped
+
+
+# ---------------------------------------------------------------------------
+# Deduping
+# ---------------------------------------------------------------------------
+
+
+def merge_text(base: str, extra: str) -> str:
+    if not extra.strip():
+        return base
+    if not base.strip():
+        return extra
+    if extra.strip() in base:
+        return base
+    return f"{base.rstrip()}\n\n{extra.lstrip()}"
+
+
+def append_history(keeper: ET.Element, other: Entry) -> None:
+    history = keeper.find("History")
+    if history is None:
+        history = ET.Element("History")
+        binaries = keeper.findall("Binary")
+        if binaries:
+            keeper.insert(list(keeper).index(binaries[0]), history)
+        else:
+            keeper.append(history)
+    history.append(other.elem)
+
+
+def merge_into(survivor: Entry, other: Entry) -> None:
+    """Fold a duplicate into the survivor without losing user data."""
+    if not survivor.url and other.url:
+        set_string_value(survivor.elem, "URL", other.url)
+        survivor.url = other.url
+    if not survivor.username and other.username:
+        set_string_value(survivor.elem, "UserName", other.username)
+        survivor.username = other.username
+    if not survivor.password and other.password:
+        set_string_value(survivor.elem, "Password", other.password)
+        survivor.password = other.password
+    merged_notes = merge_text(survivor.notes, other.notes)
+    if merged_notes != survivor.notes:
+        set_string_value(survivor.elem, "Notes", merged_notes)
+        survivor.notes = merged_notes
+
+    survivor_map = string_map(survivor.elem)
+    for key, value in string_map(other.elem).items():
+        if key not in survivor_map:
+            set_string_value(survivor.elem, key, value.text or "")
+
+    union = survivor.tags | other.tags
+    if union != survivor.tags:
+        set_text(ensure_child(survivor.elem, "Tags"), ";".join(sorted(union)))
+        survivor.tags = union
+
+    survivor.has_totp = survivor.has_totp or other.has_totp
+    survivor.has_attachment = survivor.has_attachment or other.has_attachment
+
+
+def collapse_exact(entries: list[Entry]) -> tuple[list[Entry], list[Entry]]:
+    """Tier 1/T4: identical identity collapses to one live entry."""
+    buckets: dict[tuple, list[Entry]] = defaultdict(list)
+    for entry in entries:
+        if entry.pw_hash:
+            bucket = ("cred", entry.key, entry.username.strip().lower(), entry.pw_hash)
+        elif entry.is_secure_note:
+            bucket = ("note", title_key(entry.title), sha(entry.notes.strip()))
+        else:
+            bucket = ("misc", entry.uuid)
+        buckets[bucket].append(entry)
+
+    live: list[Entry] = []
+    collapsed: list[Entry] = []
+    for bucket in buckets.values():
+        bucket.sort(key=lambda item: item.score(), reverse=True)
+        survivor = bucket[0]
+        for duplicate in bucket[1:]:
+            merge_into(survivor, duplicate)
+            duplicate.action = "merged-exact"
+            duplicate.reason = f"same url+user+password as {survivor.uuid[:8]}"
+            collapsed.append(duplicate)
+        live.append(survivor)
+    return live, collapsed
+
+
+def fold_password_history(
+    entries: list[Entry], policy: str
+) -> tuple[list[Entry], list[Entry], list[tuple[str, str, int]]]:
+    """Tier 2/T3: same site+user with several passwords is a conflict, not a dupe."""
+    buckets: dict[tuple, list[Entry]] = defaultdict(list)
+    for entry in entries:
+        if entry.key and not entry.is_secure_note:
+            buckets[(entry.key, entry.username.strip().lower())].append(entry)
+        else:
+            buckets[("unique", entry.uuid)].append(entry)
+
+    live: list[Entry] = []
+    retired: list[Entry] = []
+    conflicts: list[tuple[str, str, int]] = []
+    for bucket_key, bucket in buckets.items():
+        if len(bucket) == 1:
+            live.append(bucket[0])
+            continue
+        conflicting = {entry.pw_hash for entry in bucket if entry.pw_hash}
+        if len(conflicting) <= 1:
+            live.extend(bucket)
+            continue
+        bucket.sort(key=lambda item: item.score(), reverse=True)
+        survivor = bucket[0]
+        for other in bucket[1:]:
+            if other.pw_hash == survivor.pw_hash or not other.pw_hash:
+                live.append(other)
+                continue
+            if policy == "archive":
+                other.category = "Archive/Old Passwords"
+                other.action = "retained-as-old"
+                other.reason = f"superseded by {survivor.uuid[:8]}"
+                live.append(other)
+            else:
+                append_history(survivor.elem, other)
+                other.action = "moved-to-history"
+                other.reason = f"superseded by {survivor.uuid[:8]}"
+                retired.append(other)
+        conflicts.append((bucket_key[0], bucket_key[1], len(conflicting)))
+        live.append(survivor)
+    return live, retired, conflicts
+
+
+# ---------------------------------------------------------------------------
+# Rebuilding the tree
+# ---------------------------------------------------------------------------
+
+
+def build_group(name: str, uuid: str, icon: str = "48") -> ET.Element:
+    group = ET.Element("Group")
+    set_child_text(group, "UUID", uuid)
+    set_child_text(group, "Name", name)
+    set_child_text(group, "Notes", "")
+    set_child_text(group, "IconID", icon)
+    times = ET.SubElement(group, "Times")
+    stamp = now_ts()
+    set_child_text(times, "CreationTime", stamp)
+    set_child_text(times, "LastModificationTime", stamp)
+    set_child_text(times, "LastAccessTime", stamp)
+    set_child_text(times, "ExpiryTime", stamp)
+    set_child_text(times, "Expires", "False")
+    set_child_text(times, "UsageCount", "0")
+    set_child_text(times, "LocationChanged", stamp)
+    set_child_text(group, "IsExpanded", "True")
+    set_child_text(group, "DefaultAutoTypeSequence", "")
+    set_child_text(group, "EnableAutoType", "null")
+    set_child_text(group, "EnableSearching", "null")
+    set_child_text(group, "LastTopVisibleEntry", EMPTY_META_UUID)
+    return group
+
+
+def group_uuid(name: str) -> str:
+    """Stable 16-byte group UUIDs so re-runs do not churn."""
+    digest = hashlib.sha1(f"kpx-tidy:{name}".encode("utf-8")).digest()[:16]
+    return base64.b64encode(digest).decode("ascii")
+
+
+def rebuild_tree(
+    root: ET.Element,
+    meta: ET.Element,
+    entries: list[Entry],
+    rules: dict,
+    db_name: str,
+) -> None:
+    tree = child(root, "Root")
+    assert tree is not None
+    old_top = tree.find("Group")
+    top_name = child_text(old_top, "Name") or "Root"
+    top_uuid = child_text(old_top, "UUID")
+    if len(base64.b64decode(top_uuid or "")) != 16:
+        top_uuid = group_uuid(f"root:{top_name}")
+    deleted = tree.find("DeletedObjects")
+    for existing in tree.findall("Group"):
+        tree.remove(existing)
+
+    # <Root> must hold exactly one <Group>; categories live inside it.
+    top = build_group(top_name, top_uuid, icon=child_text(old_top, "IconID") or "49")
+    tree.append(top)
+    if deleted is not None:
+        tree.remove(deleted)
+        tree.append(deleted)
+
+    by_category: dict[str, list[Entry]] = defaultdict(list)
+    for entry in entries:
+        by_category[entry.category].append(entry)
+
+    trash_uuid = group_uuid("Trash")
+    ordered = sorted(
+        by_category,
+        key=lambda name: (name == "Unsorted", name != "Trash", name.lower()),
+    )
+    for category in ordered:
+        group = build_group(category, group_uuid(category))
+        members = sorted(
+            by_category[category],
+            key=lambda item: (item.title.lower(), item.username.lower()),
+        )
+        if rules["group_by_site"]:
+            sites: dict[str, ET.Element] = {}
+            for entry in members:
+                site = category
+                if entry.key:
+                    site = entry.key
+                if site not in sites:
+                    sites[site] = build_group(site, group_uuid(f"{category}/{site}"))
+                    group.append(sites[site])
+                sites[site].append(entry.elem)
+        else:
+            for entry in members:
+                group.append(entry.elem)
+        top.append(group)
+
+    group = build_group("Trash", trash_uuid)
+    top.append(group)
+
+    set_child_text(meta, "DatabaseName", db_name)
+    set_child_text(meta, "RecycleBinUUID", trash_uuid)
+    set_child_text(meta, "RecycleBinEnabled", "True")
+    if child(meta, "DatabaseNameChanged") is None:
+        set_child_text(meta, "DatabaseNameChanged", now_ts())
+
+
+# ---------------------------------------------------------------------------
+# Verification
+# ---------------------------------------------------------------------------
+
+
+def collect_uuids(elem: ET.Element) -> set[str]:
+    """Every UUID reachable from elem, entry history included."""
+    found: set[str] = set()
+    for entry in elem.iter("Entry"):
+        uuid = child_text(entry, "UUID")
+        if uuid:
+            found.add(uuid)
+    return found
+
+
+def live_entries(root: ET.Element) -> list[ET.Element]:
+    """Entry elements that are actually visible, ignoring entry history."""
+    found: list[ET.Element] = []
+
+    def visit(group: ET.Element) -> None:
+        found.extend(group.findall("Entry"))
+        for sub in group.findall("Group"):
+            visit(sub)
+
+    tree = child(root, "Root")
+    top = child(tree if tree is not None else root, "Group")
+    if top is not None:
+        visit(top)
+    return found
+
+
+def verify_generated(root: ET.Element, original: list[Entry]) -> list[str]:
+    """Every original entry must live on, either as an entry or in history."""
+    tree = child(root, "Root")
+    present = collect_uuids(tree if tree is not None else root)
+    problems = []
+    for entry in original:
+        if entry.action in ("merged-exact", "dropped-empty"):
+            continue
+        if entry.uuid not in present:
+            problems.append(f"lost entry {entry.uuid[:8]} {entry.title!r}")
+    for elem in root.iter():
+        if elem.tag not in ("UUID", "RecycleBinUUID"):
+            continue
+        try:
+            size = len(base64.b64decode(elem.text or "", validate=True))
+        except (ValueError, TypeError):
+            problems.append(f"unreadable UUID value: {elem.text!r}")
+            continue
+        if size != 16:
+            problems.append(f"UUID {elem.text!r} is {size} bytes, KeePassXC needs 16")
+    return problems
+
+
+def verify_import(xml_root: ET.Element, db: Path) -> list[str]:
+    """Re-read the imported database and compare against what we generated."""
+    result = subprocess.run(
+        ["keepassxc-cli", "export", "-f", "xml", str(db)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return [f"could not re-export imported database (exit {result.returncode})"]
+    imported = ET.fromstring(result.stdout)
+    strip_namespaces(imported)
+
+    def fingerprint(entry: ET.Element) -> tuple[str, str, str, str]:
+        return (
+            string_value(entry, "Title"),
+            string_value(entry, "UserName"),
+            string_value(entry, "URL"),
+            sha(string_value(entry, "Password")),
+        )
+
+    expected = {
+        child_text(entry, "UUID"): fingerprint(entry) for entry in live_entries(xml_root)
+    }
+    problems: list[str] = []
+    seen = 0
+    for entry_elem in live_entries(imported):
+        uuid = child_text(entry_elem, "UUID")
+        if uuid not in expected:
+            continue
+        seen += 1
+        actual = fingerprint(entry_elem)
+        if actual != expected[uuid]:
+            problems.append(f"field mismatch after import: {uuid[:8]} {actual[0]!r}")
+
+    missing = len(expected) - seen
+    if missing > 0:
+        problems.append(f"{missing} entries lost during XML import")
+
+    for label, predicate in (
+        ("TOTP", lambda entry: bool({"otp", "totp", "totp seed"} & {key.lower() for key in string_map(entry)})),
+        ("attachment", lambda entry: child(entry, "Binary") is not None),
+    ):
+        wanted = sum(1 for entry in live_entries(xml_root) if predicate(entry))
+        got = sum(1 for entry in live_entries(imported) if predicate(entry))
+        if got < wanted:
+            problems.append(f"{wanted - got} of {wanted} entries lost their {label}")
+    return problems
+
+
+# ---------------------------------------------------------------------------
+# Reports
+# ---------------------------------------------------------------------------
+
+
+def write_reports(
+    report_dir: Path,
+    live: list[Entry],
+    dropped: list[Entry],
+    retired: list[Entry],
+    conflicts: list[tuple[str, str, int]],
+    stats: Counter,
+) -> None:
+    report_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+
+    with (report_dir / "actions.csv").open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(
+            ["uuid", "action", "reason", "title", "username", "url", "category", "original_group"]
+        )
+        for entry in live + retired + dropped:
+            if entry.action:
+                writer.writerow(
+                    [
+                        entry.uuid,
+                        entry.action,
+                        entry.reason,
+                        entry.title,
+                        entry.username,
+                        entry.url,
+                        entry.category,
+                        "/".join(entry.group_path),
+                    ]
+                )
+
+    category_counts = Counter(entry.category for entry in live)
+    unmatched_domains = Counter(
+        entry.key or "(no url)" for entry in live if entry.reason.startswith("unmatched")
+    )
+
+    reused: dict[str, list[str]] = defaultdict(list)
+    for entry in live:
+        if entry.pw_hash:
+            reused[entry.pw_hash].append(entry.key or entry.title)
+    reuse_clusters = sorted(
+        (sites for sites in reused.values() if len({site for site in sites if site}) > 1),
+        key=len,
+        reverse=True,
+    )
+
+    lines = [
+        "# kpx-tidy report",
+        "",
+        f"generated: {now_ts()}",
+        "",
+        "## Totals",
+        "",
+        f"- entries read: {stats['read']}",
+        f"- entries skipped (recycle bin): {stats['skipped']}",
+        f"- entries kept: {len(live)}",
+        f"- exact duplicates merged: {stats['merged']}",
+        f"- passwords moved to history: {len(retired)}",
+        f"- empty entries dropped: {len(dropped)}",
+        f"- site/user conflicts: {len(conflicts)}",
+        "",
+        "## Categories",
+        "",
+    ]
+    for name, count in category_counts.most_common():
+        lines.append(f"- {name}: {count}")
+    lines += ["", "## Needs a rule (top 25)", ""]
+    if unmatched_domains:
+        for name, count in unmatched_domains.most_common(25):
+            lines.append(f"- {name} ({count})")
+    else:
+        lines.append("- none")
+    lines += ["", "## Reused passwords across sites", ""]
+    if reuse_clusters:
+        for cluster in reuse_clusters[:20]:
+            lines.append(f"- {len(cluster)} sites: {', '.join(sorted(set(cluster))[:6])}")
+    else:
+        lines.append("- none")
+    lines += ["", "## Conflicts (same site and user, different password)", ""]
+    if conflicts:
+        for host, user, count in sorted(conflicts)[:50]:
+            lines.append(f"- {host} / {user or '(no user)'}: {count} distinct passwords")
+    else:
+        lines.append("- none")
+
+    (report_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Apply
+# ---------------------------------------------------------------------------
+
+
+def import_database(xml_path: Path, out: Path) -> None:
+    if out.exists():
+        die(f"refusing to overwrite existing file: {out}")
+    info(f"creating {out} (you will be asked to set its password)")
+    result = subprocess.run(
+        ["keepassxc-cli", "import", "-p", str(xml_path), str(out)],
+        check=False,
+    )
+    if result.returncode != 0 or not out.is_file():
+        die(f"import failed (exit {result.returncode}); no database was written")
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        prog="kpx-tidy",
+        description="Dedupe and reorganize a KeePassXC database (report by default).",
+    )
+    parser.add_argument(
+        "database",
+        type=Path,
+        nargs="?",
+        help="path to the .kdbx file to read (omit when using --from-xml)",
+    )
+    parser.add_argument(
+        "--apply",
+        action="store_true",
+        help="build the cleaned database (default is report only)",
+    )
+    parser.add_argument(
+        "--from-xml",
+        type=Path,
+        help="read a previously exported KeePass XML instead of the database",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        help="output database path (default: <name>.tidy.kdbx next to the original)",
+    )
+    parser.add_argument(
+        "--rules",
+        type=Path,
+        default=DEFAULT_RULES,
+        help=f"classification rules (default: {DEFAULT_RULES})",
+    )
+    parser.add_argument(
+        "--report-dir",
+        type=Path,
+        help="where to write report.md/actions.csv (default: $XDG_STATE_HOME/kpx-tidy/<time>)",
+    )
+    parser.add_argument(
+        "--conflict",
+        choices=("history", "archive"),
+        help="what to do with superseded passwords (default: from rules file)",
+    )
+    parser.add_argument(
+        "--group-by-site",
+        action="store_true",
+        help="nest a group per site inside each category",
+    )
+    parser.add_argument(
+        "--keep-xml",
+        action="store_true",
+        help="keep the intermediate XML (plaintext, for debugging)",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv: list[str]) -> int:
+    args = parse_args(argv)
+    rules = load_rules(args.rules)
+    policy = args.conflict or rules["conflict_policy"]
+    if args.group_by_site:
+        rules["group_by_site"] = True
+
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    report_dir = args.report_dir or STATE_HOME / "kpx-tidy" / stamp
+    source = args.database
+    if source is None and args.from_xml is None:
+        die("give a database path or --from-xml XML to read")
+    source_name = (source or args.from_xml).stem
+    out = args.out or (source or args.from_xml).with_suffix(".tidy.kdbx")
+
+    if args.from_xml:
+        try:
+            root = ET.parse(args.from_xml).getroot()
+        except (OSError, ET.ParseError) as exc:
+            die(f"cannot read {args.from_xml}: {exc}")
+        strip_namespaces(root)
+    else:
+        root = export_xml(source)
+    entries, meta, skipped = walk_groups(root)
+
+    protected = [entry for entry in entries if entry.has_protected]
+    if protected:
+        die(
+            f"{len(protected)} entries carry still-encrypted values "
+            "(Protected='True'); this export cannot be rewritten safely"
+        )
+    if any(not entry.uuid for entry in entries):
+        die("found entries without a UUID; refusing to rewrite")
+
+    stats = Counter(read=len(entries), skipped=skipped)
+    if rules["drop_empty_entries"]:
+        dropped = [entry for entry in entries if entry.is_empty]
+        for entry in dropped:
+            entry.action = "dropped-empty"
+            entry.reason = "no title, username, password, url or notes"
+        entries = [entry for entry in entries if not entry.is_empty]
+    else:
+        dropped = []
+
+    live, collapsed = collapse_exact(entries)
+    stats["merged"] = len(collapsed)
+    live, retired, conflicts = fold_password_history(live, policy)
+
+    for entry in live:
+        category, reason = classify(entry, rules)
+        entry.category = entry.category or category
+        entry.reason = entry.reason or reason
+
+    rebuild_tree(root, meta, live, rules, source_name + " (tidy)")
+
+    problems = verify_generated(root, entries + dropped)
+    if problems:
+        for problem in problems[:10]:
+            warn(problem)
+        die("verification failed before writing; nothing was changed")
+
+    write_reports(report_dir, live, dropped, retired, conflicts, stats)
+    info(f"report: {report_dir / 'report.md'}")
+    info(f"actions: {report_dir / 'actions.csv'}")
+    info(
+        f"summary: read {stats['read']}, kept {len(live)}, "
+        f"merged {len(collapsed)}, history {len(retired)}, dropped {len(dropped)}"
+    )
+
+    if not args.apply:
+        info("report only; pass --apply to build the cleaned database")
+        return 0
+
+    workdir = Path(tempfile.mkdtemp(prefix="kpx-tidy-"))
+    try:
+        os.chmod(workdir, 0o700)
+        xml_path = workdir / "clean.xml"
+        ET.ElementTree(root).write(xml_path, encoding="utf-8", xml_declaration=True)
+        os.chmod(xml_path, 0o600)
+        import_database(xml_path, out)
+    finally:
+        if args.keep_xml:
+            info(f"intermediate XML kept at {xml_path}")
+        else:
+            for leftover in workdir.iterdir():
+                leftover.unlink()
+            workdir.rmdir()
+
+    problems = verify_import(root, out)
+    if problems:
+        for problem in problems[:20]:
+            warn(problem)
+        die(f"import verification failed; inspect {out}, original untouched")
+    info(f"verified {out}")
+    info("original database untouched; open the new file and spot-check before swapping")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except TidyError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        sys.exit(1)
+    except KeyboardInterrupt:
+        print("interrupted", file=sys.stderr)
+        sys.exit(130)
