@@ -4,7 +4,53 @@
     // Always ask before editing, writing, or patching any file.
     { "action": "edit", "resource": "*", "effect": "ask" },
     // Always ask before running any shell command.
-    { "action": "shell", "resource": "*", "effect": "ask" }
+    { "action": "shell", "resource": "*", "effect": "ask" },
+
+    // Credential stores are never readable or writable by the file tools.
+    // This does not sandbox the shell: `shell` still runs with full user
+    // authority, so the ask rule above is what gates indirect access
+    // (cp, base64, gpg, scripts). Directory-inference patterns are too
+    // easy to bypass to pretend otherwise.
+    { "action": "read", "resource": "$HOME/.ssh/*", "effect": "deny" },
+    { "action": "edit", "resource": "$HOME/.ssh/*", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.gnupg/*", "effect": "deny" },
+    { "action": "edit", "resource": "$HOME/.gnupg/*", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.aws/*", "effect": "deny" },
+    { "action": "edit", "resource": "$HOME/.aws/*", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.azure/*", "effect": "deny" },
+    { "action": "edit", "resource": "$HOME/.azure/*", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.config/gcloud/*", "effect": "deny" },
+    { "action": "edit", "resource": "$HOME/.config/gcloud/*", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.docker/config.json", "effect": "deny" },
+    { "action": "edit", "resource": "$HOME/.docker/config.json", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.kube/config", "effect": "deny" },
+    { "action": "edit", "resource": "$HOME/.kube/config", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.netrc", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.git-credentials", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.config/gh/hosts.yml", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.local/share/keyrings/*", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.password-store/*", "effect": "deny" },
+    // opencode's own tokens: no reason for an agent to read these.
+    { "action": "read", "resource": "$HOME/.local/share/opencode/auth.json", "effect": "deny" },
+    { "action": "edit", "resource": "$HOME/.local/share/opencode/auth.json", "effect": "deny" },
+    { "action": "read", "resource": "$HOME/.config/opencode/service.json", "effect": "deny" },
+    { "action": "edit", "resource": "$HOME/.config/opencode/service.json", "effect": "deny" },
+
+    // Secrets files in any project. `*` crosses `/`, so these match whole
+    // paths and not just filenames in the working directory. Denying `edit`
+    // as well keeps secret lines out of approval prompts, because a patch
+    // would otherwise display the surrounding file content.
+    { "action": "read", "resource": "*.env", "effect": "deny" },
+    { "action": "edit", "resource": "*.env", "effect": "deny" },
+    { "action": "read", "resource": "*.env.*", "effect": "deny" },
+    { "action": "edit", "resource": "*.env.*", "effect": "deny" },
+
+    // Templates hold no secrets, so keep the default allow. These must stay
+    // last: rule order is significant and the final match wins.
+    { "action": "read", "resource": "*.env.example", "effect": "allow" },
+    { "action": "read", "resource": "*.env.sample", "effect": "allow" },
+    { "action": "read", "resource": "*.env.template", "effect": "allow" },
+    { "action": "read", "resource": "*.env.dist", "effect": "allow" }
   ],
   // Pinned instead of "random": random only fails over on HTTP 429, so a
   // provider that returns empty results would silently stick for the session.
