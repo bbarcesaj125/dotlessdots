@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import base64
+import copy
 import csv
 import hashlib
 import json
@@ -309,6 +310,7 @@ def load_rules(path: Path) -> dict:
     rules.setdefault("domain_alias", {})
     rules.setdefault("folder_keywords", [])
     rules.setdefault("title_keywords", [])
+    rules.setdefault("host_keywords", [])
     rules.setdefault("conflict_policy", "history")
     rules.setdefault("group_by_site", False)
     rules.setdefault("drop_empty_entries", True)
@@ -347,6 +349,10 @@ def classify(entry: Entry, rules: dict) -> tuple[str, str]:
 
     if entry.is_secure_note:
         return "Secure Notes", "secure-note"
+
+    category = keyword_hits(entry.key, rules["host_keywords"])
+    if category:
+        return category, f"host:{entry.key}"
 
     for part in reversed(entry.group_path):
         category = keyword_hits(part, rules["folder_keywords"])
@@ -442,6 +448,23 @@ def merge_text(base: str, extra: str) -> str:
     return f"{base.rstrip()}\n\n{extra.lstrip()}"
 
 
+def take_history(entry_elem: ET.Element) -> list[ET.Element]:
+    """Detach an entry's own history, flattened, so it never nests.
+
+    KeePassXC rejects <History> inside a history entry, so an entry that is
+    itself retired has to hand its old versions up to its new parent.
+    """
+    nested = entry_elem.find("History")
+    if nested is None:
+        return []
+    collected: list[ET.Element] = []
+    for old in nested.findall("Entry"):
+        collected.extend(take_history(old))
+        collected.append(copy.deepcopy(old))
+    entry_elem.remove(nested)
+    return collected
+
+
 def append_history(keeper: ET.Element, other: Entry) -> None:
     history = keeper.find("History")
     if history is None:
@@ -451,6 +474,8 @@ def append_history(keeper: ET.Element, other: Entry) -> None:
             keeper.insert(list(keeper).index(binaries[0]), history)
         else:
             keeper.append(history)
+    for older in take_history(other.elem):
+        history.append(older)
     history.append(other.elem)
 
 
@@ -651,6 +676,17 @@ def rebuild_tree(
     if child(meta, "DatabaseNameChanged") is None:
         set_child_text(meta, "DatabaseNameChanged", now_ts())
 
+    # Group UUIDs are regenerated, so any stored pointer to the old tree is
+    # dangling and makes the importer complain about invalid references.
+    for tag in ("LastSelectedGroup", "LastTopVisibleGroup", "EntryTemplatesGroup"):
+        pointer = child(meta, tag)
+        if pointer is not None:
+            pointer.text = top_uuid
+    for entry_elem in root.iter("Entry"):
+        stale = entry_elem.find("PreviousParentGroup")
+        if stale is not None:
+            entry_elem.remove(stale)
+
 
 # ---------------------------------------------------------------------------
 # Verification
@@ -795,6 +831,21 @@ def write_reports(
     unmatched_domains = Counter(
         entry.key or "(no url)" for entry in live if entry.reason.startswith("unmatched")
     )
+    samples: dict[str, tuple[str, str]] = {}
+    for entry in live:
+        if entry.reason.startswith("unmatched"):
+            samples.setdefault(
+                entry.key or "(no url)",
+                (entry.title, "/".join(entry.group_path)),
+            )
+    with (report_dir / "unmatched.txt").open("w", encoding="utf-8") as handle:
+        handle.write("# count\thost\tregistrable\tsample title\toriginal folder\n")
+        for host, count in unmatched_domains.most_common():
+            title, folder = samples[host]
+            root = ""
+            if host and not host.startswith(("app:", "note:", "raw:", "(")):
+                root = registrable(host)
+            handle.write(f"{count}\t{host}\t{root}\t{title}\t{folder}\n")
 
     reused: dict[str, list[str]] = defaultdict(list)
     for entry in live:
