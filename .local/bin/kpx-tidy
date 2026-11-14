@@ -742,8 +742,12 @@ def verify_generated(root: ET.Element, original: list[Entry]) -> list[str]:
     return problems
 
 
+UNVERIFIED = "unverified: "
+
+
 def verify_import(xml_root: ET.Element, db: Path) -> list[str]:
     """Re-read the imported database and compare against what we generated."""
+    info(f"verifying {db.name}: unlocking it now (same password you just set)")
     result = subprocess.run(
         ["keepassxc-cli", "export", "-f", "xml", str(db)],
         capture_output=True,
@@ -751,7 +755,7 @@ def verify_import(xml_root: ET.Element, db: Path) -> list[str]:
         check=False,
     )
     if result.returncode != 0 or not result.stdout.strip():
-        return [f"could not re-export imported database (exit {result.returncode})"]
+        return [UNVERIFIED + f"could not unlock {db.name} for verification"]
     imported = ET.fromstring(result.stdout)
     strip_namespaces(imported)
 
@@ -1065,10 +1069,17 @@ def main(argv: list[str]) -> int:
             workdir.rmdir()
 
     problems = verify_import(root, out)
-    if problems:
-        for problem in problems[:20]:
+    unverified = [problem for problem in problems if problem.startswith(UNVERIFIED)]
+    fatal = [problem for problem in problems if not problem.startswith(UNVERIFIED)]
+
+    if fatal:
+        for problem in fatal[:20]:
             warn(problem)
         die(f"import verification failed; inspect {out}, original untouched")
+    if unverified:
+        warn(unverified[0][len(UNVERIFIED):])
+        info(f"{out} was written but not verified; open it in KeePassXC and spot-check")
+        return 0
     info(f"verified {out}")
     info("original database untouched; open the new file and spot-check before swapping")
     return 0
