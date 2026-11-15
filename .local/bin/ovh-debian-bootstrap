@@ -319,6 +319,17 @@ phase_decisions() {
         SSH_ALLOW_SET="${SSH_PORT_ORIGINAL}, ${SSH_PORT}"
         note "firewall will allow both ${SSH_PORT_ORIGINAL} and ${SSH_PORT} until re-run"
     fi
+
+    # Echo the resolved answers: in --yes/--check mode the prompts stay
+    # silent, and the plan must still be readable from the output.
+    info "Resolved"
+    note "admin user:  ${ADMIN_USER}"
+    note "upgrade now: ${UPGRADE_NOW}"
+    note "ssh port:    ${SSH_PORT}"
+    note "firewall:    ${FIREWALL}"
+    note "swap:        ${SWAP_CHOICE} (${ram_mb} MB RAM detected)"
+    note "updates:     ${UPDATE_SCOPE}"
+    note "extras:      sysctl=${EXTRA_SYSCTL} journald=${EXTRA_JOURNALD} llmnr=${EXTRA_LLMNR} sudo-window=${EXTRA_SUDO_WINDOW}"
 }
 
 # =============================================================================
