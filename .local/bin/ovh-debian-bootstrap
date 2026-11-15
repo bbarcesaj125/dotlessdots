@@ -303,7 +303,8 @@ phase_decisions() {
         "security only" \
         "security + point releases")
 
-    info "Optional extras"
+    # Prompts are silent in --yes/--check mode, so the header would be orphaned.
+    (( ASSUME_YES )) || info "Optional extras"
     ask_yes_no "  sysctl network hardening (rp_filter, syncookies)?" n \
         && EXTRA_SYSCTL="y" || EXTRA_SYSCTL="n"
     ask_yes_no "  cap the systemd journal at 200 MB?" n \
@@ -755,7 +756,13 @@ EOF
 # =============================================================================
 
 phase_verify() {
-    step "Verification"
+    # In --check the phases above changed nothing, so what follows is the
+    # state before the plan, not its result.
+    if (( DRY_RUN )); then
+        step "Verification (current state)"
+    else
+        step "Verification"
+    fi
 
     printf '\nEffective sshd settings:\n'
     sshd -T 2>/dev/null | grep -E '^(port|passwordauthentication|permitrootlogin|pubkeyauthentication|kbdinteractiveauthentication)' || true
