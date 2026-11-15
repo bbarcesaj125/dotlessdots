@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# =============================================================================
+# Google Drive two-way sync
+# =============================================================================
+#
+# Keeps ~/Drive and Drive:Drive as a single mirrored pair using rclone bisync,
+# so creates, edits and deletes propagate in both directions.
+#
+# Scheduling, overlap prevention and log rotation belong to the gdrive-sync
+# systemd units; this script only spells out the sync policy.
+#
+# Run --resync once after setup, and again only if bisync refuses to start
+# because its baseline no longer matches reality. Never --resync blindly: it
+# treats whatever is on each side as the truth and can resurrect deletions.
+
+readonly local_root="${HOME}/Drive"
+readonly remote_root="Drive:Drive"
+
+# =============================================================================
+# Helpers
+# =============================================================================
+
+usage() {
+  cat >&2 <<EOF
+Usage: $(basename "$0") [OPTIONS]
+
+  --resync    Rebuild the bisync baseline (setup, or after an unrecoverable
+              error). Do not use for routine runs.
+  --dry-run   Report what would change without modifying either side.
+  -h, --help  Show this help.
+
+Syncs ${local_root} <-> ${remote_root}.
+EOF
+}
+
+die() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 1
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+# =============================================================================
+# Main
+# =============================================================================
+
+main() {
+  local resync=0 dry_run=0
+
+  while (($#)); do
+    case "$1" in
+    --resync) resync=1 ;;
+    --dry-run) dry_run=1 ;;
+    -h | --help)
+      usage
+      return 0
+      ;;
+    *)
+      usage
+      die "unknown argument: $1"
+      ;;
+    esac
+    shift
+  done
+
+  require_cmd rclone
+  [[ -d "$local_root" ]] || die "local root not found: $local_root"
+
+  local -a args=(
+    bisync "$local_root" "$remote_root"
+    # Keep the most recently modified version instead of writing conflict
+    # copies on every laptop-versus-cloud race.
+    --conflict-resolve newer
+    # When both sides changed, keep the loser under name.conflict1/2 rather
+    # than discarding it.
+    --conflict-loser num
+    # Refuse to mirror a suspiciously large deletion instead of trusting it.
+    --max-delete 100
+    # Survive dropped connections and interrupted runs without forcing a
+    # manual --resync.
+    --resilient --recover
+    --transfers 8 --checkers 8 --drive-chunk-size 32M
+    # Regenerable junk and lock files that change constantly and would only
+    # create noise or false conflicts.
+    --exclude '*.log'
+    --exclude '.DS_Store'
+    --exclude 'desktop.ini'
+    --exclude '~$*'
+    --exclude '.~lock.*#'
+    --stats-one-line
+    --log-level INFO
+  )
+
+  ((resync)) && args+=(--resync)
+  ((dry_run)) && args+=(--dry-run)
+
+  exec rclone "${args[@]}"
+}
+
+main "$@"

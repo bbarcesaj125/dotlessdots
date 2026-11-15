@@ -1,0 +1,13 @@
+[Unit]
+Description=Periodic Google Drive bisync Timer
+RefuseManualStart=no
+RefuseManualStop=no
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+# Spread the Drive API calls instead of hitting it at a fixed minute.
+RandomizedDelaySec=5min
+
+[Install]
+WantedBy=default.target

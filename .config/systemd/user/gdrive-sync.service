@@ -1,0 +1,10 @@
+[Unit]
+Description=Google Drive two-way sync (rclone bisync)
+RefuseManualStart=no
+RefuseManualStop=no
+
+[Service]
+Type=oneshot
+ExecStart=/home/yusarch/.local/bin/gdrive-sync
+# A stuck run must not overlap the next timer tick.
+TimeoutStartSec=20min
