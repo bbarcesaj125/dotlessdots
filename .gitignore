@@ -27,3 +27,7 @@
 .config/vid-download/*
 !.config/vid-download/config.example
 .config/wallpaper-changer/config
+
+# Mounted backup disk and browser profiles: never part of the dotfiles.
+HDD/
+.mozilla/
