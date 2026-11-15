@@ -18,6 +18,8 @@
 # Local credentials and machine-specific settings.
 .config/iptv/*
 !.config/iptv/config.example
+# Site-by-site classification rules: a list of accounts I hold, kept local.
+.config/kpx-tidy/rules.json
 .config/opencode/service.json
 .config/rsyncvps/*
 !.config/rsyncvps/config.example
