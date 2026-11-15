@@ -50,6 +50,21 @@
 - Never perform recursive permission changes.
 - If a package, service or system-level change is required, explain why and provide the commands for me to execute.
 
+### Remote Hosts
+
+- The rules above govern this machine. Remote hosts are managed separately.
+- Default: for privileged work on a remote host, write a script or command
+  block and have me run it.
+- Direct administration is allowed only during a timed sudo window that I
+  open explicitly and close with `sudo -K`.
+- During an open window:
+  - Take a provider snapshot or equivalent backup first.
+  - Print each privileged command before running it.
+  - Ask before anything irreversible: package removal, file deletion,
+    firewall reload, `/etc` rewrites.
+- Never leave standing passwordless sudo on a host.
+- Outside a window privileged commands fail; return to the script pattern.
+
 ### Git Operations
 
 - The agent may stage files with `dotfiles add` and commit with `dotfiles commit`.
