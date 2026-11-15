@@ -311,6 +311,7 @@ def load_rules(path: Path) -> dict:
     rules.setdefault("folder_keywords", [])
     rules.setdefault("title_keywords", [])
     rules.setdefault("host_keywords", [])
+    rules.setdefault("host_prefixes", [])
     rules.setdefault("conflict_policy", "history")
     rules.setdefault("group_by_site", False)
     rules.setdefault("drop_empty_entries", True)
@@ -321,6 +322,23 @@ def keyword_hits(needle: str, pairs: list[list[str]]) -> str | None:
     lowered = (needle or "").lower()
     for pattern, category in pairs:
         if pattern and pattern.lower() in lowered:
+            return category
+    return None
+
+
+def label_hits(host: str, pairs: list[list[str]]) -> str | None:
+    """Match whole host labels only, so 'cloud' cannot match ovhcloud.com."""
+    labels = {label for label in re.split(r"[.\-_:]", (host or "").lower()) if label}
+    for word, category in pairs:
+        if word.lower() in labels:
+            return category
+    return None
+
+
+def prefix_hits(host: str, pairs: list[list[str]]) -> str | None:
+    lowered = (host or "").lower()
+    for prefix, category in pairs:
+        if prefix and lowered.startswith(prefix.lower()):
             return category
     return None
 
@@ -350,9 +368,13 @@ def classify(entry: Entry, rules: dict) -> tuple[str, str]:
     if entry.is_secure_note:
         return "Secure Notes", "secure-note"
 
-    category = keyword_hits(entry.key, rules["host_keywords"])
+    category = label_hits(entry.key, rules["host_keywords"])
     if category:
         return category, f"host:{entry.key}"
+
+    category = prefix_hits(entry.key, rules["host_prefixes"])
+    if category:
+        return category, f"hostnet:{entry.key}"
 
     for part in reversed(entry.group_path):
         category = keyword_hits(part, rules["folder_keywords"])
@@ -850,6 +872,17 @@ def write_reports(
             if host and not host.startswith(("app:", "note:", "raw:", "(")):
                 root = registrable(host)
             handle.write(f"{count}\t{host}\t{root}\t{title}\t{folder}\n")
+
+    # Every decision, so a rule that matched by accident is visible.
+    with (report_dir / "classified.txt").open("w", encoding="utf-8") as handle:
+        handle.write("# category\thost\trule\ttitle\toriginal folder\n")
+        for entry in sorted(
+            live, key=lambda item: (item.category.lower(), item.key, item.title.lower())
+        ):
+            handle.write(
+                f"{entry.category}\t{entry.key or '(no url)'}\t{entry.reason}\t"
+                f"{entry.title}\t{'/'.join(entry.group_path)}\n"
+            )
 
     reused: dict[str, list[str]] = defaultdict(list)
     for entry in live:
