@@ -1,0 +1,822 @@
+#!/usr/bin/env bash
+#
+# ovh-debian-bootstrap - harden a fresh OVH Debian 13 VPS.
+#
+# Run on the server as root (via sudo) right after the first OVH login:
+#
+#   sudo ovh-debian-bootstrap
+#
+# OVH hands out a temporary password for the "debian" user and disables root
+# login, so the first session is always a normal account with sudo. Every
+# phase below inspects the current state and skips what is already correct,
+# so the script can be re-run after a partial failure.
+#
+# Ambiguous choices are prompted, never assumed. Use --help to see them.
+
+set -euo pipefail
+trap 'printf "[error] aborted at line %s (exit %s)\n" "$LINENO" "$?" >&2' ERR
+
+# =============================================================================
+# Globals
+# =============================================================================
+
+DRY_RUN=0
+ASSUME_YES=0
+CHECK_ONLY=0
+
+ADMIN_USER=""
+SSH_PORT=22
+SSH_PORT_ORIGINAL=22
+SSHD_DROPIN="/etc/ssh/sshd_config.d/10-hardening.conf"
+FIREWALL="nftables"
+SSH_ALLOW_SET="22"
+SWAP_CHOICE="none"
+UPGRADE_NOW="n"
+UPDATE_SCOPE="security"
+EXTRA_SYSCTL="n"
+EXTRA_JOURNALD="n"
+EXTRA_LLMNR="n"
+EXTRA_SUDO_WINDOW="n"
+
+# =============================================================================
+# Output helpers
+# =============================================================================
+
+info() { printf '==> %s\n' "$*" >&2; }
+note() { printf '    %s\n' "$*" >&2; }
+step() { printf '\n--- %s ---\n' "$*" >&2; }
+warn() { printf '[warn] %s\n' "$*" >&2; }
+die()  { printf '[error] %s\n' "$*" >&2; exit 1; }
+
+usage() {
+    cat <<'EOF'
+Usage: ovh-debian-bootstrap [OPTIONS]
+
+Hardens a fresh OVH Debian 13 VPS: SSH, firewall, fail2ban, unattended
+upgrades, optional swap, and a verification pass.
+
+Options:
+  -h, --help     show this help
+  -n, --dry-run  print every action, change nothing
+  -y, --yes      accept defaults without prompting (still refuses unsafe states)
+  -c, --check    audit only; implies --dry-run and defaults
+
+Decisions prompted (defaults first):
+  1. admin user: keep the current sudo user, or create a new one
+  2. run a full package upgrade now: no
+  3. SSH port: 22, or a custom port
+  4. firewall backend: nftables, or ufw
+  5. swap: none (>= 4 GB RAM), 2 GB, or half of RAM
+  6. update scope: security only, or security plus point releases
+  7. extras: sysctl hardening, journald cap, disable LLMNR, timed sudo window
+
+Always applied: key-only SSH, no root login, default-deny firewall,
+fail2ban, and automatic security updates.
+
+Requires root. The script refuses to disable password authentication unless a
+usable SSH key is already installed for the admin user.
+EOF
+}
+
+# =============================================================================
+# Prompt helpers
+# =============================================================================
+
+ask_yes_no() {
+    local prompt="$1" default="$2" reply
+    if (( ASSUME_YES )); then
+        [[ $default == y ]]
+        return
+    fi
+    read -r -p "${prompt} [${default}]: " reply || reply=""
+    reply="${reply:-$default}"
+    [[ $reply =~ ^[Yy] ]]
+}
+
+ask_value() {
+    local prompt="$1" default="$2" reply
+    if (( ASSUME_YES )); then
+        printf '%s' "$default"
+        return 0
+    fi
+    read -r -p "${prompt} [${default}]: " reply || reply=""
+    printf '%s' "${reply:-$default}"
+}
+
+# Menu on stderr, chosen value on stdout, so callers can capture it.
+ask_choice() {
+    local prompt="$1" def="$2"
+    shift 2
+    local -a opts=("$@")
+    local i reply
+
+    if (( ASSUME_YES )); then
+        printf '%s' "${opts[$((def - 1))]}"
+        return 0
+    fi
+
+    {
+        printf '%s\n' "$prompt"
+        for i in "${!opts[@]}"; do
+            printf '  %d) %s' "$((i + 1))" "${opts[$i]}"
+            (( i + 1 == def )) && printf '  [default]'
+            printf '\n'
+        done
+    } >&2
+
+    while true; do
+        read -r -p "Choice [${def}]: " reply || reply=""
+        reply="${reply:-$def}"
+        if [[ $reply =~ ^[0-9]+$ ]] && (( reply >= 1 && reply <= ${#opts[@]} )); then
+            printf '%s' "${opts[$((reply - 1))]}"
+            return 0
+        fi
+        warn "invalid choice: ${reply}"
+    done
+}
+
+# =============================================================================
+# Execution helpers
+# =============================================================================
+
+have() { command -v "$1" >/dev/null 2>&1; }
+
+pkg_installed() {
+    dpkg-query -W -f='${Status}' "$1" 2>/dev/null | grep -q 'install ok installed'
+}
+
+run() {
+    if (( DRY_RUN )); then
+        note "would run: $*"
+        return 0
+    fi
+    note "run: $*"
+    "$@"
+}
+
+# Write a file only when its content differs, keeping the script idempotent.
+write_file() {
+    local path="$1" mode="$2" content="$3"
+
+    if [[ -f $path ]] && cmp -s -- <(printf '%s\n' "$content") "$path"; then
+        note "unchanged: ${path}"
+        return 0
+    fi
+    if (( DRY_RUN )); then
+        note "would write: ${path}"
+        return 0
+    fi
+    printf '%s\n' "$content" >"$path"
+    chmod "$mode" "$path"
+    note "wrote: ${path}"
+}
+
+install_pkgs() {
+    local missing=() p
+    for p in "$@"; do
+        pkg_installed "$p" || missing+=("$p")
+    done
+    if (( ${#missing[@]} == 0 )); then
+        note "packages already installed: $*"
+        return 0
+    fi
+    run env DEBIAN_FRONTEND=noninteractive apt-get install -y -- "${missing[@]}"
+}
+
+# =============================================================================
+# Phase 0: preflight
+# =============================================================================
+
+phase_preflight() {
+    step "Preflight"
+
+    (( EUID == 0 )) || die "must run as root: sudo $0"
+
+    # shellcheck disable=SC1091
+    . /etc/os-release
+    local distro="${ID:-unknown}" version="${VERSION_ID:-unknown}"
+
+    if [[ $distro != debian ]]; then
+        warn "expected Debian, found ${PRETTY_NAME:-unknown}"
+        ask_yes_no "Continue anyway?" n || die "aborted by user"
+    elif [[ ${version%%.*} != 13 ]]; then
+        warn "expected Debian 13, found ${PRETTY_NAME:-unknown}"
+        ask_yes_no "Continue anyway?" n || die "aborted by user"
+    fi
+
+    # OVH images ship a "debian" user with a temporary password and no root
+    # login, so SUDO_USER is the account we harden.
+    ADMIN_USER="${SUDO_USER:-}"
+    if [[ -z $ADMIN_USER || $ADMIN_USER == root ]]; then
+        ADMIN_USER="$(awk -F: '$3 >= 1000 && $3 < 65534 { print $1; exit }' /etc/passwd)"
+    fi
+    [[ -n $ADMIN_USER ]] || die "could not determine a non-root admin user"
+
+    SSH_PORT_ORIGINAL="$(sshd -T 2>/dev/null | awk '$1 == "port" { print $2; exit }')"
+    SSH_PORT_ORIGINAL="${SSH_PORT_ORIGINAL:-22}"
+    SSH_PORT="$SSH_PORT_ORIGINAL"
+
+    local socket_activated="no"
+    if systemctl is-active --quiet ssh.socket 2>/dev/null; then
+        socket_activated="yes"
+    fi
+
+    local dhcp="no"
+    if compgen -G '/run/systemd/netif/leases/*' >/dev/null 2>&1 \
+        || compgen -G '/var/lib/dhcp/*.leases' >/dev/null 2>&1; then
+        dhcp="yes"
+    fi
+
+    local ipv6="no"
+    if ip -6 addr show scope global 2>/dev/null | grep -q 'inet6'; then
+        ipv6="yes"
+    fi
+
+    info "host: ${HOSTNAME:-$(hostname)}"
+    note "distro: ${PRETTY_NAME:-unknown}"
+    note "admin user: ${ADMIN_USER}"
+    note "sshd port: ${SSH_PORT} (socket-activated: ${socket_activated})"
+    note "dhcp: ${dhcp}, ipv6: ${ipv6}"
+    note "firewall present: nft=$(have nft && echo yes || echo no) ufw=$(have ufw && echo yes || echo no)"
+    note "mode: dry-run=${DRY_RUN} assume-yes=${ASSUME_YES}"
+
+    if (( CHECK_ONLY )); then
+        info "audit mode: no changes will be made"
+    elif ! ask_yes_no "Proceed with bootstrap?" y; then
+        info "aborted"
+        exit 0
+    fi
+
+    SOCKET_ACTIVATED="$socket_activated"
+}
+
+# =============================================================================
+# Phase 1: decisions
+# =============================================================================
+
+phase_decisions() {
+    step "Decisions"
+
+    local user_choice
+    if [[ ${SUDO_USER:-} == "$ADMIN_USER" ]]; then
+        user_choice=$(ask_choice "Admin user:" 1 \
+            "keep ${ADMIN_USER}" \
+            "create a new user")
+        if [[ $user_choice == "create a new user" ]]; then
+            local new_user
+            new_user=$(ask_value "New username" "")
+            [[ $new_user =~ ^[a-z_][a-z0-9_-]*$ ]] || die "invalid username: ${new_user}"
+            NEW_USER="$new_user"
+        fi
+    fi
+
+    ask_yes_no "Run a full package upgrade now (may pull a new kernel)?" n \
+        && UPGRADE_NOW="y" || UPGRADE_NOW="n"
+
+    if [[ $SOCKET_ACTIVATED == yes ]]; then
+        warn "sshd is socket-activated; the port is fixed by ssh.socket"
+        note "keeping port ${SSH_PORT_ORIGINAL}; a custom port needs a socket drop-in"
+    else
+        local port_choice
+        port_choice=$(ask_choice "SSH port:" 1 "keep ${SSH_PORT_ORIGINAL}" "use a custom port")
+        if [[ $port_choice == "use a custom port" ]]; then
+            local port
+            port=$(ask_value "Port number (1024-65535)" "2222")
+            [[ $port =~ ^[0-9]+$ ]] || die "invalid port: ${port}"
+            (( port >= 1024 && port <= 65535 )) || die "port out of range: ${port}"
+            SSH_PORT="$port"
+        fi
+    fi
+
+    FIREWALL=$(ask_choice "Firewall backend:" 1 "nftables" "ufw")
+
+    local ram_mb default_swap
+    ram_mb=$(awk '/MemTotal/ { print int($2 / 1024) }' /proc/meminfo)
+    default_swap="none"
+    (( ram_mb < 4096 )) && default_swap="2 GB"
+
+    SWAP_CHOICE=$(ask_choice "Swap (detected ${ram_mb} MB RAM):" \
+        "$([[ $default_swap == none ]] && echo 1 || echo 2)" \
+        "none" "2 GB" "half of RAM")
+
+    UPDATE_SCOPE=$(ask_choice "Automatic updates:" 1 \
+        "security only" \
+        "security + point releases")
+
+    info "Optional extras"
+    ask_yes_no "  sysctl network hardening (rp_filter, syncookies)?" n \
+        && EXTRA_SYSCTL="y" || EXTRA_SYSCTL="n"
+    ask_yes_no "  cap the systemd journal at 200 MB?" n \
+        && EXTRA_JOURNALD="y" || EXTRA_JOURNALD="n"
+    ask_yes_no "  disable LLMNR in systemd-resolved?" n \
+        && EXTRA_LLMNR="y" || EXTRA_LLMNR="n"
+    ask_yes_no "  install the timed sudo window config?" n \
+        && EXTRA_SUDO_WINDOW="y" || EXTRA_SUDO_WINDOW="n"
+
+    # During a port change, keep the old port open until the new one is proven.
+    SSH_ALLOW_SET="$SSH_PORT_ORIGINAL"
+    if [[ $SSH_PORT != "$SSH_PORT_ORIGINAL" ]]; then
+        SSH_ALLOW_SET="${SSH_PORT_ORIGINAL}, ${SSH_PORT}"
+        note "firewall will allow both ${SSH_PORT_ORIGINAL} and ${SSH_PORT} until re-run"
+    fi
+}
+
+# =============================================================================
+# Phase 2: identity
+# =============================================================================
+
+phase_identity() {
+    step "Identity"
+
+    if [[ -n ${NEW_USER:-} ]]; then
+        if id "$NEW_USER" >/dev/null 2>&1; then
+            note "user ${NEW_USER} already exists"
+        else
+            run useradd -m -s /bin/bash -G sudo -- "$NEW_USER"
+            run install -d -m 0700 -o "$NEW_USER" -g "$NEW_USER" "/home/${NEW_USER}/.ssh"
+            if [[ -s /home/${ADMIN_USER}/.ssh/authorized_keys ]]; then
+                run install -m 0600 -o "$NEW_USER" -g "$NEW_USER" \
+                    "/home/${ADMIN_USER}/.ssh/authorized_keys" "/home/${NEW_USER}/.ssh/authorized_keys"
+            else
+                warn "no keys found for ${ADMIN_USER}; copy them before disabling passwords"
+            fi
+            warn "set a console password for ${NEW_USER}: passwd ${NEW_USER}"
+        fi
+        ADMIN_USER="$NEW_USER"
+    fi
+
+    local hostname_now
+    hostname_now=$(hostname)
+    local hostname_new
+    hostname_new=$(ask_value "Hostname" "$hostname_now")
+    if [[ $hostname_new != "$hostname_now" ]]; then
+        run hostnamectl set-hostname "$hostname_new"
+    fi
+
+    local tz_now tz_choice
+    tz_now=$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)
+    tz_choice=$(ask_choice "Timezone:" 1 \
+        "keep ${tz_now}" "UTC" "Europe/Paris" "other")
+    case "$tz_choice" in
+        "keep "*) : ;;
+        other)
+            tz_choice=$(ask_value "Timezone (e.g. Europe/Paris)" "$tz_now")
+            run timedatectl set-timezone "$tz_choice"
+            ;;
+        *)
+            run timedatectl set-timezone "$tz_choice"
+            ;;
+    esac
+
+    # The KVM console still needs a local password even when SSH is key-only.
+    local pw_state
+    pw_state=$(passwd -S "$ADMIN_USER" 2>/dev/null | awk '{ print $2 }' || true)
+    case "${pw_state:-}" in
+        P) note "console password set for ${ADMIN_USER}" ;;
+        L|NP) warn "${ADMIN_USER} has no usable password; console recovery will fail. Run: passwd ${ADMIN_USER}" ;;
+    esac
+
+    note "reboot required after a hostname change to update /etc/hosts"
+}
+
+# =============================================================================
+# Phase 3: packages
+# =============================================================================
+
+phase_packages() {
+    step "Packages"
+
+    run env DEBIAN_FRONTEND=noninteractive apt-get update -qq
+
+    if [[ $UPGRADE_NOW == y ]]; then
+        run env DEBIAN_FRONTEND=noninteractive apt-get full-upgrade -y
+        note "reboot when convenient if the kernel changed"
+    fi
+
+    local base=(sudo curl ca-certificates vim htop rsync git tmux
+                unattended-upgrades apt-listchanges fail2ban)
+    if [[ $FIREWALL == nftables ]]; then
+        base+=(nftables)
+    else
+        base+=(ufw iptables)
+    fi
+    install_pkgs "${base[@]}"
+}
+
+# =============================================================================
+# Phase 4: sshd
+# =============================================================================
+
+phase_ssh() {
+    step "SSH"
+
+    local keyfile="/home/${ADMIN_USER}/.ssh/authorized_keys"
+    [[ -s $keyfile ]] || die "no SSH key in ${keyfile}; refusing to disable password auth"
+    grep -qE '^(ssh-|ecdsa-|sk-)' -- "$keyfile" \
+        || die "${keyfile} has no recognised public key"
+
+    note "key present for ${ADMIN_USER}"
+
+    if [[ -f /etc/ssh/sshd_config.d/50-cloud-init.conf ]]; then
+        note "found 50-cloud-init.conf; 10-hardening.conf sorts first and wins"
+    fi
+
+    local content
+    content=$(
+        cat <<'EOF'
+# Managed by ovh-debian-bootstrap.
+#
+# sshd honours the FIRST value it finds, and sshd_config includes this
+# directory at the top, so these settings take precedence over anything
+# defined later in the file or in cloud-init's own drop-in.
+PubkeyAuthentication yes
+PasswordAuthentication no
+KbdInteractiveAuthentication no
+PermitEmptyPasswords no
+PermitRootLogin no
+MaxAuthTries 3
+LoginGraceTime 20
+ClientAliveInterval 300
+ClientAliveCountMax 2
+X11Forwarding no
+AllowAgentForwarding no
+EOF
+    )
+
+    if [[ $SSH_PORT != "$SSH_PORT_ORIGINAL" ]]; then
+        content+=$'\n'"Port ${SSH_PORT}"
+    fi
+
+    write_file "$SSHD_DROPIN" 0644 "$content"
+
+    if (( ! DRY_RUN )); then
+        sshd -t || die "sshd config invalid; not reloading"
+        note "sshd config validated"
+    fi
+
+    if [[ $SOCKET_ACTIVATED == yes ]]; then
+        run systemctl reload ssh.socket
+    else
+        run systemctl reload ssh
+    fi
+}
+
+# =============================================================================
+# Phase 5: firewall
+# =============================================================================
+
+phase_firewall() {
+    step "Firewall (${FIREWALL})"
+
+    if [[ $FIREWALL == nftables ]]; then
+        local content
+        content=$(
+            cat <<EOF
+#!/usr/sbin/nft -f
+
+# Managed by ovh-debian-bootstrap - reload with: systemctl reload nftables
+#
+# Default-deny inbound. To publish a service, extend the input chain, e.g.
+#     tcp dport { 80, 443 } accept
+
+# Recreate only this table: "flush ruleset" would also delete the table
+# fail2ban maintains, without fail2ban noticing until it next restarts.
+add table inet filter
+delete table inet filter
+
+table inet filter {
+    chain input {
+        type filter hook input priority filter; policy drop;
+
+        # Replies to our own outbound connections, including the SSH session.
+        ct state established,related accept
+        ct state invalid drop
+        iif lo accept
+
+        ip protocol icmp accept
+        ip6 nexthdr ipv6-icmp accept
+
+        tcp dport { ${SSH_ALLOW_SET} } accept
+
+        # DHCP client. OVH assigns addresses this way; dropping the reply
+        # breaks networking at the next lease renewal, hours later.
+        udp dport { 68, 546 } accept
+    }
+
+    chain forward {
+        type filter hook forward priority filter; policy drop;
+    }
+
+    chain output {
+        type filter hook output priority filter; policy accept;
+    }
+}
+EOF
+        )
+
+        write_file /etc/nftables.conf 0644 "$content"
+
+        if (( ! DRY_RUN )); then
+            nft -c -f /etc/nftables.conf || die "ruleset invalid; nothing applied"
+            note "ruleset validated"
+        fi
+        run systemctl enable nftables
+        run systemctl reload-or-restart nftables
+
+    else
+        local p
+        run ufw default deny incoming
+        run ufw default allow outgoing
+        IFS=', ' read -r -a ports <<<"$SSH_ALLOW_SET"
+        for p in "${ports[@]}"; do
+            [[ -n $p ]] && run ufw allow "${p}/tcp"
+        done
+        run ufw --force enable
+        run ufw status verbose
+    fi
+}
+
+# =============================================================================
+# Phase 6: fail2ban
+# =============================================================================
+
+phase_fail2ban() {
+    step "fail2ban"
+
+    local banaction="nftables-multiport"
+    if [[ $FIREWALL == ufw ]] || [[ ! -f /etc/fail2ban/action.d/nftables-multiport.conf ]]; then
+        banaction="iptables-multiport"
+    fi
+
+    local content
+    content=$(
+        cat <<EOF
+[DEFAULT]
+# A minimal Debian image has no syslog; read the journal directly.
+backend  = systemd
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+banaction = ${banaction}
+
+[sshd]
+# Ban the port actually in use, otherwise the action blocks nothing.
+port    = ${SSH_PORT}
+enabled = true
+EOF
+    )
+
+    write_file /etc/fail2ban/jail.local 0644 "$content"
+
+    run systemctl enable fail2ban
+    run systemctl restart fail2ban
+}
+
+# =============================================================================
+# Phase 7: unattended upgrades
+# =============================================================================
+
+phase_updates() {
+    step "Automatic updates"
+
+    local auto
+    auto=$(
+        cat <<'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+    )
+    write_file /etc/apt/apt.conf.d/20auto-upgrades 0644 "$auto"
+
+    if [[ $UPDATE_SCOPE == "security + point releases" ]]; then
+        local extra
+        # ${distro_codename} stays literal: unattended-upgrades expands it.
+        extra=$(
+            cat <<'EOF'
+// Managed by ovh-debian-bootstrap: also install point releases.
+Unattended-Upgrade::Origins-Pattern {
+        "origin=Debian,codename=${distro_codename}-updates";
+};
+EOF
+        )
+        write_file /etc/apt/apt.conf.d/51unattended-upgrades-updates 0644 "$extra"
+    fi
+
+    run systemctl enable unattended-upgrades
+    run systemctl restart unattended-upgrades
+}
+
+# =============================================================================
+# Phase 8: swap
+# =============================================================================
+
+phase_swap() {
+    step "Swap (${SWAP_CHOICE})"
+
+    [[ $SWAP_CHOICE == none ]] && { note "skipped"; return 0; }
+
+    if swapon --show 2>/dev/null | grep -q .; then
+        note "swap already active; skipping"
+        return 0
+    fi
+
+    local size_mb
+    if [[ $SWAP_CHOICE == "2 GB" ]]; then
+        size_mb=2048
+    else
+        size_mb=$(awk '/MemTotal/ { print int($2 / 2048) }' /proc/meminfo)
+        (( size_mb < 1024 )) && size_mb=1024
+        (( size_mb > 4096 )) && size_mb=4096
+    fi
+
+    info "creating ${size_mb} MB swapfile"
+    run fallocate -l "${size_mb}M" /swapfile
+    run chmod 600 /swapfile
+    run mkswap /swapfile
+    run swapon /swapfile
+
+    if ! grep -q '^/swapfile ' /etc/fstab 2>/dev/null; then
+        if (( DRY_RUN )); then
+            note "would add /swapfile to /etc/fstab"
+        else
+            printf '/swapfile none swap sw 0 0\n' >>/etc/fstab
+            note "added /swapfile to /etc/fstab"
+        fi
+    fi
+
+    local sysctl_conf
+    sysctl_conf=$(
+        cat <<'EOF'
+# Low swappiness: use swap only under real pressure.
+vm.swappiness=10
+EOF
+    )
+    write_file /etc/sysctl.d/99-swap.conf 0644 "$sysctl_conf"
+    run sysctl -q -p /etc/sysctl.d/99-swap.conf
+}
+
+# =============================================================================
+# Phase 9: extras
+# =============================================================================
+
+phase_extras() {
+    step "Extras"
+
+    if [[ $EXTRA_SYSCTL == y ]]; then
+        local sysctl_conf
+        sysctl_conf=$(
+            cat <<'EOF'
+# Managed by ovh-debian-bootstrap.
+# Drop spoofed packets and harden the IP stack against trivial abuse.
+net.ipv4.conf.all.rp_filter=1
+net.ipv4.conf.default.rp_filter=1
+net.ipv4.tcp_syncookies=1
+net.ipv4.conf.all.accept_redirects=0
+net.ipv4.conf.default.accept_redirects=0
+net.ipv6.conf.all.accept_redirects=0
+net.ipv4.conf.all.send_redirects=0
+net.ipv4.conf.all.accept_source_route=0
+net.ipv6.conf.all.accept_source_route=0
+EOF
+        )
+        write_file /etc/sysctl.d/99-hardening.conf 0644 "$sysctl_conf"
+        run sysctl -q --system
+    fi
+
+    if [[ $EXTRA_JOURNALD == y ]]; then
+        run install -d -m 0755 /etc/systemd/journald.conf.d
+        local journal
+        journal=$(
+            cat <<'EOF'
+# Keep the journal bounded; the default can grow to a large share of the disk.
+[Journal]
+SystemMaxUse=200M
+EOF
+        )
+        write_file /etc/systemd/journald.conf.d/99-size.conf 0644 "$journal"
+        run systemctl restart systemd-journald
+    fi
+
+    if [[ $EXTRA_LLMNR == y ]]; then
+        run install -d -m 0755 /etc/systemd/resolved.conf.d
+        local resolved
+        resolved=$(
+            cat <<'EOF'
+# LLMNR is a Windows discovery protocol; a server never needs it.
+[Resolve]
+LLMNR=no
+EOF
+        )
+        write_file /etc/systemd/resolved.conf.d/99-llmnr.conf 0644 "$resolved"
+        run systemctl restart systemd-resolved
+    fi
+
+    if [[ $EXTRA_SUDO_WINDOW == y ]]; then
+        local sudoers
+        # ${ADMIN_USER} interpolated below; ${distro} style text is not used here.
+        sudoers=$(
+            cat <<EOF
+# Timed window for agent-assisted administration.
+# Open:  ssh -t <host> 'sudo -v'
+# Close: ssh -t <host> 'sudo -K'
+#
+# !tty_tickets lets one authentication cover separate SSH sessions.
+# timestamp_timeout is an IDLE timeout, refreshed by each command.
+Defaults:${ADMIN_USER} !tty_tickets
+Defaults:${ADMIN_USER} timestamp_timeout=5
+Defaults:${ADMIN_USER} log_output
+EOF
+        )
+        write_file /etc/sudoers.d/agent-window 0440 "$sudoers"
+        if (( ! DRY_RUN )); then
+            visudo -c >/dev/null || { rm -f /etc/sudoers.d/agent-window; die "sudoers invalid; fragment removed"; }
+            note "sudoers validated"
+        fi
+    fi
+
+    if [[ $EXTRA_SYSCTL$EXTRA_JOURNALD$EXTRA_LLMNR$EXTRA_SUDO_WINDOW == nnnn ]]; then
+        note "no extras selected"
+    fi
+}
+
+# =============================================================================
+# Phase 10: verification
+# =============================================================================
+
+phase_verify() {
+    step "Verification"
+
+    printf '\nEffective sshd settings:\n'
+    sshd -T 2>/dev/null | grep -E '^(port|passwordauthentication|permitrootlogin|pubkeyauthentication|kbdinteractiveauthentication)' || true
+
+    printf '\nFirewall:\n'
+    if [[ $FIREWALL == nftables ]]; then
+        nft list ruleset 2>/dev/null || note "nftables not loaded"
+    else
+        ufw status verbose 2>/dev/null || note "ufw not running"
+    fi
+
+    printf '\nSwap:\n'
+    swapon --show 2>/dev/null || true
+
+    printf '\nFailed units:\n'
+    systemctl --failed --no-legend 2>/dev/null || true
+
+    printf '\nListening sockets:\n'
+    ss -tulpn 2>/dev/null || true
+}
+
+# =============================================================================
+# Phase 11: handoff
+# =============================================================================
+
+phase_handoff() {
+    step "Done"
+
+    cat <<EOF
+
+Manual steps that cannot be scripted:
+  1. Open a second terminal and confirm SSH still works before closing this one.
+  2. In the provider panel: set reverse DNS, then take a snapshot.
+  3. If the SSH port changed, the old port is still open in the firewall.
+     Verify the new one, then re-run this script to drop the old port.
+  4. Point DNS at the new address when you are ready to cut over.
+
+Admin user: ${ADMIN_USER}
+SSH port:   ${SSH_PORT}
+Firewall:   ${FIREWALL}
+
+EOF
+}
+
+# =============================================================================
+# Main
+# =============================================================================
+
+main() {
+    while (( $# )); do
+        case "$1" in
+            -h|--help)    usage; exit 0 ;;
+            -n|--dry-run) DRY_RUN=1 ;;
+            -y|--yes)     ASSUME_YES=1 ;;
+            -c|--check)   CHECK_ONLY=1; DRY_RUN=1; ASSUME_YES=1 ;;
+            *)            die "unknown option: $1 (try --help)" ;;
+        esac
+        shift
+    done
+
+    phase_preflight
+    phase_decisions
+    phase_identity
+    phase_packages
+    phase_ssh
+    phase_firewall
+    phase_fail2ban
+    phase_updates
+    phase_swap
+    phase_extras
+    phase_verify
+    phase_handoff
+}
+
+main "$@"

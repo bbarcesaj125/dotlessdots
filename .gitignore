@@ -8,6 +8,7 @@
 !.local/bin/drivesync
 !.local/bin/iptv
 !.local/bin/keepass-toggle
+!.local/bin/ovh-debian-bootstrap
 !.local/bin/power-menu
 !.local/bin/rsyncvps
 !.local/bin/vid-download
