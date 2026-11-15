@@ -335,6 +335,17 @@ def label_hits(host: str, pairs: list[list[str]]) -> str | None:
     return None
 
 
+def word_hits(text: str, pairs: list[list[str]]) -> str | None:
+    """Match whole words only, so 'bank' cannot match 'bankexam.fr'."""
+    lowered = (text or "").lower()
+    for word, category in pairs:
+        if not word:
+            continue
+        if re.search(rf"(?<![a-z0-9]){re.escape(word.lower())}(?![a-z0-9])", lowered):
+            return category
+    return None
+
+
 def prefix_hits(host: str, pairs: list[list[str]]) -> str | None:
     lowered = (host or "").lower()
     for prefix, category in pairs:
@@ -381,7 +392,7 @@ def classify(entry: Entry, rules: dict) -> tuple[str, str]:
         if category:
             return category, f"folder:{part}"
 
-    category = keyword_hits(entry.title, rules["title_keywords"])
+    category = word_hits(entry.title, rules["title_keywords"])
     if category:
         return category, f"title:{entry.title[:40]}"
 
