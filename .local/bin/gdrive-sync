@@ -84,6 +84,10 @@ main() {
     # manual --resync.
     --resilient --recover
     --transfers 8 --checkers 8 --drive-chunk-size 32M
+    # Native Google Docs have no binary content and only export to a snapshot,
+    # so they can never round-trip: editing one in the browser would spawn
+    # duplicate objects. Keep them out of the tree entirely.
+    --drive-skip-gdocs
     # Regenerable junk and lock files that change constantly and would only
     # create noise or false conflicts.
     --exclude '*.log'
