@@ -33,3 +33,6 @@
 # Mounted backup disk and browser profiles: never part of the dotfiles.
 HDD/
 .mozilla/
+
+# Nested repositories with their own remotes: never part of the dotfiles.
+Projects/
