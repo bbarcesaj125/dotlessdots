@@ -1,0 +1,980 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# =============================================================================
+# img-pdf - build a document-like PDF from images
+# =============================================================================
+#
+# Turns scans or photos of papers into a PDF that reads like a real document:
+# A4 by default, no decorative margins, page-filling placement, optional
+# background trimming, and explicit control over DPI, compression and naming.
+#
+# Page geometry and image placement are independent concerns:
+#   --page/--margin/--orientation      shape the sheet
+#   --width/--height/--fit/--gravity   position the image on it
+#
+# Embedding is conservative: with --dpi auto each page is rasterised at the
+# resolution the source can actually fill, so images are never upscaled to a
+# resolution they do not contain. --fit native uses the file's own DPI instead
+# of the page box, which is how an ID-1 card keeps its real 85.6 x 54 mm size.
+#
+# Requires: imagemagick (magick), ghostscript (gs). Optional: fzf for --pick,
+# exiftool for --title and metadata cleanup.
+
+readonly PROG=${0##*/}
+readonly AUTO_DPI_MAX=300
+readonly AUTO_DPI_MIN=96
+readonly TRIM_FUZZ_DEFAULT="2%"
+
+PAGE="A4"
+ORIENTATION="auto"
+MARGIN="0"
+BACKGROUND="white"
+WIDTH_SPEC=""
+HEIGHT_SPEC=""
+FIT="contain"
+GRAVITY="center"
+TRIM_FUZZ=""
+DPI_SPEC="auto"
+QUALITY="90"
+COMPRESS="auto"
+GRAY=0
+MAX_SIZE=""
+OUTPUT=""
+NAME=""
+TITLE=""
+OVERWRITE=0
+DRY_RUN=0
+VERBOSE=0
+FILES_FROM=""
+PICK=0
+SORT_MODE="natural"
+REVERSE=0
+
+# Geometry filled in by resolve_page/plan_page and consumed by build_page.
+page_w_mm=""
+page_h_mm=""
+rect_w=""
+rect_h=""
+draw_w=""
+draw_h=""
+dpi=""
+page_px_w=0
+page_px_h=0
+rect_px_w=0
+rect_px_h=0
+draw_px_w=0
+draw_px_h=0
+
+files=()
+page_files=()
+dest=""
+work_dir=""
+
+# =============================================================================
+# Helpers
+# =============================================================================
+
+usage() {
+  cat <<EOF
+Usage: $PROG [OPTIONS] IMAGE... | DIR... | --files-from LIST
+
+Build a PDF from images, one page per image, in the order given.
+
+Page:
+  --page SIZE             A0-A6, Letter, Legal, or WxH in mm (default: A4)
+  --orientation MODE      auto | portrait | landscape (default: auto, follows
+                          the first image)
+  --margin MM             Page margin in mm (default: 0, document look)
+  --background COLOR      Color behind transparent images (default: white)
+
+Image placement:
+  --width LEN             Width in mm, cm, in, or % of page width
+  --height LEN            Height in mm, cm, in, or % of page height
+                          An omitted dimension follows the image aspect ratio.
+                          Neither given: the content box after margins.
+  --fit MODE              contain | cover | stretch | native
+                            contain  keep aspect, letterbox (default)
+                            cover    fill the box, crop overflow
+                            stretch  force the box, may distort
+                            native   use the file's own DPI (physical size)
+  --gravity POS           center | north | south | east | west | northeast |
+                          northwest | southeast | southwest (default: center)
+  --trim [FUZZ]           Crop the background around a photographed document.
+                          FUZZ defaults to 2%; works best on a fairly uniform
+                          background.
+  --no-trim               Disable --trim (the default).
+
+Quality:
+  --dpi auto|N            Embedding resolution (default: auto, at most 300,
+                          never upscales the limiting axis)
+  --quality N             JPEG quality, 1-100 (default: 90)
+  --compress MODE         auto | jpeg | zip (default: auto -> jpeg;
+                          zip is lossless, for line art)
+  --gray                  Convert pages to grayscale (scan-like, smaller)
+  --max-size SIZE         Target size, e.g. 800K or 2M. Falls back to
+                          Ghostscript /ebook then /screen and warns if the
+                          target cannot be reached.
+
+Input selection:
+  --files-from LIST       Read image paths from LIST, one per line, in page
+                          order ('-' reads stdin; blank lines and # ignored)
+  --pick                  Choose images with fzf; selection order is page order
+  --sort MODE             natural | name | time | size for directory arguments
+                          (default: natural, so scan_2 sorts before scan_10)
+  --reverse               Reverse the final page order
+
+Output:
+  -o, --output PATH       Output PDF, or a directory to place it in
+  --name BASE             Base name for the output (extension appended)
+  --title TEXT            PDF title metadata (default: output base name)
+  --overwrite             Allow replacing an existing output file
+
+General:
+  -n, --dry-run           Print the plan without writing the PDF
+  -v, --verbose           Report per-page decisions on stderr
+  -h, --help              Show this help
+
+Examples:
+  $PROG --trim --pick ~/Scans/notice/ -o notice.pdf
+  $PROG form-p1.jpg form-p2.jpg --gray --max-size 800K
+  $PROG front.jpeg back.jpeg --width 85.6mm --height 54mm --fit stretch
+EOF
+}
+
+die() {
+  printf 'Error: %s\n' "$*" >&2
+  exit 1
+}
+
+warn() {
+  printf 'Warning: %s\n' "$*" >&2
+}
+
+note() {
+  ((VERBOSE)) || return 0
+  printf '%s\n' "$*" >&2
+}
+
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+is_number() {
+  [[ $1 =~ ^[0-9]+([.][0-9]+)?$ ]]
+}
+
+mm_to_px() {
+  awk -v mm="$1" -v dpi="$2" 'BEGIN { printf "%d", mm * dpi / 25.4 + 0.5 }'
+}
+
+human_size() {
+  awk -v b="$1" 'BEGIN {
+    if (b >= 1048576) printf "%.1f MB", b / 1048576
+    else if (b >= 1024) printf "%.0f KB", b / 1024
+    else printf "%d B", b
+  }'
+}
+
+is_image_file() {
+  case "${1,,}" in
+  *.jpg | *.jpeg | *.jpe | *.png | *.webp | *.tif | *.tiff | *.bmp | *.gif | *.jp2 | *.ppm | *.pgm)
+    return 0
+    ;;
+  *) return 1 ;;
+  esac
+}
+
+# =============================================================================
+# Option parsing
+# =============================================================================
+
+need_value() {
+  (($# >= 2)) || die "$1 requires a value"
+}
+
+# Accept options before, between or after paths.
+positional=()
+
+while (($#)); do
+  case "$1" in
+  --page)
+    need_value "$@"
+    PAGE=$2
+    shift 2
+    ;;
+  --orientation)
+    need_value "$@"
+    ORIENTATION=$2
+    shift 2
+    ;;
+  --margin)
+    need_value "$@"
+    MARGIN=$2
+    shift 2
+    ;;
+  --background)
+    need_value "$@"
+    BACKGROUND=$2
+    shift 2
+    ;;
+  --width)
+    need_value "$@"
+    WIDTH_SPEC=$2
+    shift 2
+    ;;
+  --height)
+    need_value "$@"
+    HEIGHT_SPEC=$2
+    shift 2
+    ;;
+  --fit)
+    need_value "$@"
+    FIT=$2
+    shift 2
+    ;;
+  --gravity)
+    need_value "$@"
+    GRAVITY=$2
+    shift 2
+    ;;
+  --trim)
+    TRIM_FUZZ=$TRIM_FUZZ_DEFAULT
+    # Optional value: only consume the next word when it is a fuzz spec, so
+    # `--trim --gray` does not eat the flag.
+    if (($# >= 2)) && [[ $2 =~ ^[0-9]+([.][0-9]+)?%?$ ]]; then
+      TRIM_FUZZ=$2
+      shift
+    fi
+    shift
+    ;;
+  --no-trim)
+    TRIM_FUZZ=""
+    shift
+    ;;
+  --dpi)
+    need_value "$@"
+    DPI_SPEC=$2
+    shift 2
+    ;;
+  --quality)
+    need_value "$@"
+    QUALITY=$2
+    shift 2
+    ;;
+  --compress)
+    need_value "$@"
+    COMPRESS=$2
+    shift 2
+    ;;
+  --gray)
+    GRAY=1
+    shift
+    ;;
+  --max-size)
+    need_value "$@"
+    MAX_SIZE=$2
+    shift 2
+    ;;
+  --files-from)
+    need_value "$@"
+    FILES_FROM=$2
+    shift 2
+    ;;
+  --pick)
+    PICK=1
+    shift
+    ;;
+  --sort)
+    need_value "$@"
+    SORT_MODE=$2
+    shift 2
+    ;;
+  --reverse)
+    REVERSE=1
+    shift
+    ;;
+  -o | --output)
+    need_value "$@"
+    OUTPUT=$2
+    shift 2
+    ;;
+  --name)
+    need_value "$@"
+    NAME=$2
+    shift 2
+    ;;
+  --title)
+    need_value "$@"
+    TITLE=$2
+    shift 2
+    ;;
+  --overwrite)
+    OVERWRITE=1
+    shift
+    ;;
+  -n | --dry-run)
+    DRY_RUN=1
+    shift
+    ;;
+  -v | --verbose)
+    VERBOSE=1
+    shift
+    ;;
+  -h | --help)
+    usage
+    exit 0
+    ;;
+  --)
+    shift
+    while (($#)); do
+      positional+=("$1")
+      shift
+    done
+    ;;
+  -*)
+    usage
+    die "unknown argument: $1"
+    ;;
+  *)
+    positional+=("$1")
+    shift
+    ;;
+  esac
+done
+
+set -- "${positional[@]}"
+
+# =============================================================================
+# Validation
+# =============================================================================
+
+is_number "$MARGIN" || die "--margin must be a number in mm"
+if ! [[ $QUALITY =~ ^[0-9]+$ ]] || ((QUALITY < 1 || QUALITY > 100)); then
+  die "--quality must be an integer between 1 and 100"
+fi
+
+case "$FIT" in
+contain | cover | stretch | native) ;;
+*) die "--fit must be contain, cover, stretch or native" ;;
+esac
+case "$COMPRESS" in
+auto | jpeg | zip) ;;
+*) die "--compress must be auto, jpeg or zip" ;;
+esac
+case "$SORT_MODE" in
+natural | name | time | size) ;;
+*) die "--sort must be natural, name, time or size" ;;
+esac
+case "$ORIENTATION" in
+auto | portrait | landscape) ;;
+*) die "--orientation must be auto, portrait or landscape" ;;
+esac
+
+if [[ $DPI_SPEC != auto ]]; then
+  is_number "$DPI_SPEC" || die "--dpi must be 'auto' or a number"
+  ((DPI_SPEC > 0)) || die "--dpi must be positive"
+fi
+
+if [[ -n $TRIM_FUZZ ]]; then
+  [[ $TRIM_FUZZ =~ ^[0-9]+([.][0-9]+)?%?$ ]] ||
+    die "--trim fuzz must be a percentage, e.g. 5%"
+  [[ $TRIM_FUZZ == *% ]] || TRIM_FUZZ="${TRIM_FUZZ}%"
+fi
+
+case "$GRAVITY" in
+center | centre | north | top | south | bottom | east | right | west | left | \
+  northeast | northwest | southeast | southwest) ;;
+*) die "--gravity must be center, north, south, east, west or a corner" ;;
+esac
+
+# Independent horizontal/vertical anchors: 0, 0.5 or 1.
+case "$GRAVITY" in
+center | centre) grav_x=0.5 grav_y=0.5 ;;
+north | top) grav_x=0.5 grav_y=0 ;;
+south | bottom) grav_x=0.5 grav_y=1 ;;
+east | right) grav_x=1 grav_y=0.5 ;;
+west | left) grav_x=0 grav_y=0.5 ;;
+northeast) grav_x=1 grav_y=0 ;;
+northwest) grav_x=0 grav_y=0 ;;
+southeast) grav_x=1 grav_y=1 ;;
+southwest) grav_x=0 grav_y=1 ;;
+esac
+
+max_size_bytes=0
+if [[ -n $MAX_SIZE ]]; then
+  [[ $MAX_SIZE =~ ^([0-9]+([.][0-9]+)?)([KkMmGg]?)B?$ ]] ||
+    die "--max-size must look like 800K, 1.5M or 2097152"
+  max_size_bytes=$(awk -v n="${BASH_REMATCH[1]}" -v s="${BASH_REMATCH[3]}" 'BEGIN {
+    mult = 1
+    if (s == "K" || s == "k") mult = 1024
+    if (s == "M" || s == "m") mult = 1024 * 1024
+    if (s == "G" || s == "g") mult = 1024 * 1024 * 1024
+    printf "%d", n * mult
+  }')
+fi
+
+require_cmd magick
+require_cmd gs
+
+if ((PICK)); then
+  require_cmd fzf
+fi
+
+# =============================================================================
+# Page geometry
+# =============================================================================
+
+resolve_page() {
+  local key=${PAGE,,} w h
+
+  case "$key" in
+  a0) w=841 h=1189 ;;
+  a1) w=594 h=841 ;;
+  a2) w=420 h=594 ;;
+  a3) w=297 h=420 ;;
+  a4) w=210 h=297 ;;
+  a5) w=148 h=210 ;;
+  a6) w=105 h=148 ;;
+  letter) w=215.9 h=279.4 ;;
+  legal) w=215.9 h=355.6 ;;
+  *)
+    if [[ $key =~ ^([0-9]+([.][0-9]+)?)x([0-9]+([.][0-9]+)?)$ ]]; then
+      w=${BASH_REMATCH[1]}
+      h=${BASH_REMATCH[3]}
+    else
+      die "unknown page size: $PAGE (use A0-A6, Letter, Legal, or WxH in mm)"
+    fi
+    ;;
+  esac
+
+  awk -v w="$w" -v h="$h" 'BEGIN { exit !(w > 0 && h > 0) }' ||
+    die "page dimensions must be positive"
+
+  page_w_mm=$w
+  page_h_mm=$h
+}
+
+# A wide first image means the document itself is landscape; turning the sheet
+# avoids two fat white bands on either side.
+apply_orientation() {
+  local first=$1 img_w img_h want swap
+
+  case "$ORIENTATION" in
+  portrait | landscape) want=$ORIENTATION ;;
+  auto)
+    read -r img_w img_h < <(magick identify -format '%w %h\n' "$first")
+    if ((img_w > img_h)); then want=landscape; else want=portrait; fi
+    ;;
+  esac
+
+  local current=portrait
+  if awk -v w="$page_w_mm" -v h="$page_h_mm" 'BEGIN { exit !(w > h) }'; then
+    current=landscape
+  fi
+
+  if [[ $want != $current ]]; then
+    swap=$page_w_mm
+    page_w_mm=$page_h_mm
+    page_h_mm=$swap
+  fi
+}
+
+# =============================================================================
+# Input collection
+# =============================================================================
+
+# Directory arguments are expanded deterministically; explicit arguments always
+# keep the order in which they were typed.
+list_directory() {
+  local dir=$1 entry
+  local -a entries=()
+
+  case "$SORT_MODE" in
+  natural)
+    while IFS= read -r -d '' entry; do entries+=("$entry"); done < <(
+      find "$dir" -maxdepth 1 -type f -print0 | sort -z -V
+    )
+    ;;
+  name)
+    while IFS= read -r -d '' entry; do entries+=("$entry"); done < <(
+      find "$dir" -maxdepth 1 -type f -print0 | LC_ALL=C sort -z
+    )
+    ;;
+  time | size)
+    local field='%T@'
+    [[ $SORT_MODE == size ]] && field='%s'
+    while IFS= read -r -d '' entry; do entries+=("$entry"); done < <(
+      find "$dir" -maxdepth 1 -type f -printf "${field}\t%p\0" |
+        sort -z -n | cut -z -f2-
+    )
+    ;;
+  esac
+
+  for entry in "${entries[@]}"; do
+    if is_image_file "$entry"; then
+      printf '%s\0' "$entry"
+    else
+      note "skipping non-image: $entry"
+    fi
+  done
+}
+
+read_list() {
+  local source=$1 line
+  local -a lines=()
+
+  if [[ $source == - ]]; then
+    while IFS= read -r line; do lines+=("$line"); done
+  else
+    [[ -f $source ]] || die "list file not found: $source"
+    while IFS= read -r line || [[ -n $line ]]; do lines+=("$line"); done <"$source"
+  fi
+
+  for line in "${lines[@]}"; do
+    [[ -z ${line//[[:space:]]/} ]] && continue
+    [[ $line == "#"* ]] && continue
+    printf '%s\0' "$line"
+  done
+}
+
+# fzf keeps selections in the order they were picked, which is exactly the
+# page order users want for a multi-page document.
+pick_files() {
+  printf '%s\0' "$@" |
+    while IFS= read -r -d '' entry; do
+      printf '%s\t%s\0' "$(basename -- "$entry")" "$entry"
+    done |
+    fzf --read0 --print0 --multi --delimiter=$'\t' --with-nth=1 \
+      --header 'Tab: select  |  selection order becomes page order' |
+    cut -z -d$'\t' -f2-
+}
+
+collect_inputs() {
+  local -a expanded=() picked=() reversed=()
+  local arg entry i
+
+  if (($# == 0)) && [[ -z $FILES_FROM ]]; then
+    usage
+    die "no images given"
+  fi
+
+  # A list file keeps the exact line order, so page order is predictable.
+  if [[ -n $FILES_FROM ]]; then
+    while IFS= read -r -d '' entry; do expanded+=("$entry"); done < <(read_list "$FILES_FROM")
+  fi
+
+  for arg in "$@"; do
+    if [[ -d $arg ]]; then
+      while IFS= read -r -d '' entry; do expanded+=("$entry"); done < <(list_directory "$arg")
+    else
+      expanded+=("$arg")
+    fi
+  done
+
+  ((${#expanded[@]})) || die "no images found"
+
+  if ((PICK)); then
+    while IFS= read -r -d '' entry; do picked+=("$entry"); done < <(pick_files "${expanded[@]}")
+    ((${#picked[@]})) || die "no images selected (--pick needs an interactive terminal)"
+    files=("${picked[@]}")
+  else
+    files=("${expanded[@]}")
+  fi
+
+  if ((REVERSE)); then
+    for ((i = ${#files[@]} - 1; i >= 0; i--)); do reversed+=("${files[$i]}"); done
+    files=("${reversed[@]}")
+  fi
+}
+
+# =============================================================================
+# Output path
+# =============================================================================
+
+sanitize_name() {
+  local value=$1
+
+  # Drop a trailing document/image extension so `photo.jpg` does not become
+  # `photo.jpg.pdf`.
+  value=${value%.[Pp][Dd][Ff]}
+  if is_image_file "$value"; then
+    value=${value%.*}
+  fi
+  value=${value//\//-}
+  value=${value//\\/-}
+  value=$(printf '%s' "$value" | sed -E 's/[[:space:]]+/-/g; s/^-+//; s/-+$//')
+  [[ -n $value ]] || value="output"
+  printf '%s' "$value"
+}
+
+resolve_output() {
+  local base
+
+  base=${NAME:-$(basename -- "${files[0]}")}
+  base=$(sanitize_name "$base")
+
+  if [[ -z $OUTPUT ]]; then
+    dest="$PWD/${base}.pdf"
+  elif [[ -d $OUTPUT || $OUTPUT == */ ]]; then
+    ((DRY_RUN)) || mkdir -p -- "$OUTPUT" 2>/dev/null ||
+      die "cannot create output directory: $OUTPUT"
+    dest="${OUTPUT%/}/${base}.pdf"
+  else
+    dest=$OUTPUT
+    [[ ${dest,,} == *.pdf ]] || dest="${dest}.pdf"
+    [[ -d $(dirname -- "$dest") ]] || die "output directory does not exist: $(dirname -- "$dest")"
+  fi
+
+  if [[ -e $dest ]] && ((! OVERWRITE)); then
+    if ((DRY_RUN)); then
+      warn "would refuse to overwrite existing file: $dest (use --overwrite)"
+    else
+      die "output already exists: $dest (use --overwrite)"
+    fi
+  fi
+}
+
+# =============================================================================
+# Length parsing
+# =============================================================================
+
+# A bare number means millimetres; % is relative to the page dimension.
+parse_length() {
+  local spec=$1 axis=$2
+
+  if [[ $spec =~ ^([0-9]+([.][0-9]+)?)%$ ]]; then
+    local page_mm=$page_w_mm
+    [[ $axis == height ]] && page_mm=$page_h_mm
+    awk -v p="$page_mm" -v pct="${BASH_REMATCH[1]}" 'BEGIN { printf "%.4f", p * pct / 100 }'
+    return 0
+  fi
+
+  [[ $spec =~ ^([0-9]+([.][0-9]+)?)(mm|cm|in)?$ ]] ||
+    die "invalid length: $1 (use mm, cm, in or %)"
+  awk -v n="${BASH_REMATCH[1]}" -v u="${BASH_REMATCH[3]}" 'BEGIN {
+    if (u == "cm") n *= 10
+    if (u == "in") n *= 25.4
+    printf "%.4f", n
+  }'
+}
+
+# =============================================================================
+# Per-image preparation
+# =============================================================================
+
+prepare_image() {
+  local src=$1 out=$2
+  local -a ops=(-auto-orient -colorspace sRGB)
+
+  # Trimming is opt-in: a real A4 scan already has the right white margins, and
+  # cropping them would enlarge the content and destroy the original layout.
+  if [[ -n $TRIM_FUZZ ]]; then
+    ops+=(-fuzz "$TRIM_FUZZ" -trim +repage)
+  fi
+
+  # Keep the resolution metadata: --fit native needs the source DPI, and the
+  # document metadata is applied once to the final PDF anyway.
+  magick "$src" "${ops[@]}" "PNG:${out}"
+}
+
+# Plan one page: target rectangle on the sheet, drawn size, embedding DPI.
+plan_page() {
+  local prep=$1
+  local px_w px_h res_x res_y units img_ar
+  local content_w content_h
+
+  read -r px_w px_h res_x res_y units < <(magick identify -format '%w %h %x %y %U\n' "$prep")
+  awk -v w="$px_w" -v h="$px_h" 'BEGIN { exit !(w > 0 && h > 0) }' ||
+    die "cannot measure image: $prep"
+
+  # Normalise resolution units; images without a real density report 0.
+  if [[ $units == PixelsPerCentimeter* ]]; then
+    read -r res_x res_y < <(awk -v x="$res_x" -v y="$res_y" 'BEGIN {
+      printf "%.4f %.4f\n", x * 2.54, y * 2.54
+    }')
+  fi
+
+  content_w=$(awk -v p="$page_w_mm" -v m="$MARGIN" 'BEGIN { printf "%.4f", p - 2 * m }')
+  content_h=$(awk -v p="$page_h_mm" -v m="$MARGIN" 'BEGIN { printf "%.4f", p - 2 * m }')
+  awk -v w="$content_w" -v h="$content_h" 'BEGIN { exit !(w > 0 && h > 0) }' ||
+    die "margin ${MARGIN} mm leaves no printable area on ${page_w_mm}x${page_h_mm} mm"
+
+  img_ar=$(awk -v w="$px_w" -v h="$px_h" 'BEGIN { printf "%.6f", w / h }')
+
+  # Target rectangle: explicit dimensions, the aspect-derived missing one, or
+  # the whole content box.
+  if [[ -n $WIDTH_SPEC && -n $HEIGHT_SPEC ]]; then
+    rect_w=$(parse_length "$WIDTH_SPEC" width)
+    rect_h=$(parse_length "$HEIGHT_SPEC" height)
+  elif [[ -n $WIDTH_SPEC ]]; then
+    read -r rect_w rect_h < <(awk -v w="$(parse_length "$WIDTH_SPEC" width)" \
+      -v ar="$img_ar" 'BEGIN { printf "%.4f %.4f\n", w, w / ar }')
+  elif [[ -n $HEIGHT_SPEC ]]; then
+    read -r rect_w rect_h < <(awk -v h="$(parse_length "$HEIGHT_SPEC" height)" \
+      -v ar="$img_ar" 'BEGIN { printf "%.4f %.4f\n", h * ar, h }')
+  else
+    rect_w=$content_w
+    rect_h=$content_h
+  fi
+
+  awk -v w="$rect_w" -v h="$rect_h" -v mw="$content_w" -v mh="$content_h" \
+    'BEGIN { exit !(w > 0 && h > 0 && w <= mw + 0.5 && h <= mh + 0.5) }' ||
+    die "requested size ${rect_w}x${rect_h} mm does not fit the content area ${content_w}x${content_h} mm"
+
+  # Absorb sub-millimetre overflow caused by deriving a dimension from the
+  # image ratio, so `--width 210mm` on A4 does not fail on rounding dust.
+  read -r rect_w rect_h < <(awk -v w="$rect_w" -v h="$rect_h" -v mw="$content_w" -v mh="$content_h" 'BEGIN {
+    if (w > mw) w = mw
+    if (h > mh) h = mh
+    printf "%.4f %.4f\n", w, h
+  }')
+
+  # Drawn size for the chosen fit mode.
+  case "$FIT" in
+  contain)
+    read -r draw_w draw_h < <(awk -v rw="$rect_w" -v rh="$rect_h" -v ar="$img_ar" 'BEGIN {
+      w = rw; h = w / ar
+      if (h > rh) { h = rh; w = h * ar }
+      printf "%.4f %.4f\n", w, h
+    }')
+    ;;
+  cover)
+    read -r draw_w draw_h < <(awk -v rw="$rect_w" -v rh="$rect_h" -v ar="$img_ar" 'BEGIN {
+      w = rw; h = w / ar
+      if (h < rh) { h = rh; w = h * ar }
+      printf "%.4f %.4f\n", w, h
+    }')
+    ;;
+  stretch)
+    draw_w=$rect_w
+    draw_h=$rect_h
+    ;;
+  native)
+    awk -v x="$res_x" -v y="$res_y" 'BEGIN { exit !(x > 0 && y > 0) }' ||
+      die "--fit native needs DPI metadata; this image has none (use --width)"
+    read -r draw_w draw_h < <(awk -v w="$px_w" -v h="$px_h" -v rx="$res_x" -v ry="$res_y" \
+      -v rw="$rect_w" -v rh="$rect_h" 'BEGIN {
+      mmw = w * 25.4 / rx
+      mmh = h * 25.4 / ry
+      ar = mmw / mmh
+      if (mmw > rw || mmh > rh) {
+        mmw = rw; mmh = mmw / ar
+        if (mmh > rh) { mmh = rh; mmw = mmh * ar }
+      }
+      printf "%.4f %.4f\n", mmw, mmh
+    }')
+    ;;
+  esac
+
+  # Embed at the resolution the source already provides: on the limiting axis
+  # auto never invents detail nor bloats the file with an upscale.
+  if [[ $DPI_SPEC == auto ]]; then
+    dpi=$(awk -v pw="$px_w" -v dw="$draw_w" -v ph="$px_h" -v dh="$draw_h" \
+      -v lo="$AUTO_DPI_MIN" -v hi="$AUTO_DPI_MAX" 'BEGIN {
+      dx = pw / (dw / 25.4)
+      dy = ph / (dh / 25.4)
+      d = (dx < dy) ? dx : dy
+      if (d > hi) d = hi
+      if (d < lo) d = lo
+      printf "%.3f\n", d
+    }')
+  else
+    dpi=$DPI_SPEC
+  fi
+
+  page_px_w=$(mm_to_px "$page_w_mm" "$dpi")
+  page_px_h=$(mm_to_px "$page_h_mm" "$dpi")
+  rect_px_w=$(mm_to_px "$rect_w" "$dpi")
+  rect_px_h=$(mm_to_px "$rect_h" "$dpi")
+  draw_px_w=$(mm_to_px "$draw_w" "$dpi")
+  draw_px_h=$(mm_to_px "$draw_h" "$dpi")
+
+  ((draw_px_w >= 1 && draw_px_h >= 1)) ||
+    die "image would be smaller than one pixel at ${dpi} dpi"
+}
+
+# Build one PDF page from a prepared image.
+build_page() {
+  local prep=$1 out=$2
+  local x_mm y_mm x_px y_px
+  local -a geometry=() compress_args=() gray_args=()
+
+  # Place the rectangle on the sheet by --gravity, then centre the drawn image
+  # inside it (only contain/native can leave slack there).
+  read -r x_mm y_mm < <(awk -v pw="$page_w_mm" -v ph="$page_h_mm" -v m="$MARGIN" \
+    -v rw="$rect_w" -v rh="$rect_h" -v dw="$draw_w" -v dh="$draw_h" \
+    -v fx="$grav_x" -v fy="$grav_y" 'BEGIN {
+    sx = (dw < rw) ? (rw - dw) / 2 : 0
+    sy = (dh < rh) ? (rh - dh) / 2 : 0
+    x = m + ((pw - 2 * m) - rw) * fx + sx
+    y = m + ((ph - 2 * m) - rh) * fy + sy
+    printf "%.4f %.4f\n", x, y
+  }')
+
+  x_px=$(mm_to_px "$x_mm" "$dpi")
+  y_px=$(mm_to_px "$y_mm" "$dpi")
+
+  if [[ $FIT == cover ]]; then
+    # Fill the box, then crop the overflow evenly so the centre is preserved.
+    geometry=(
+      "(" "$prep" -filter Lanczos -resize "${draw_px_w}x${draw_px_h}!"
+      -gravity center -crop "${rect_px_w}x${rect_px_h}+0+0" +repage ")"
+    )
+  else
+    geometry=("(" "$prep" -filter Lanczos -resize "${draw_px_w}x${draw_px_h}!" ")")
+  fi
+
+  case "$COMPRESS" in
+  auto | jpeg) compress_args=(-compress JPEG -quality "$QUALITY") ;;
+  zip) compress_args=(-compress Zip) ;;
+  esac
+
+  ((GRAY)) && gray_args=(-colorspace Gray)
+
+  magick -size "${page_px_w}x${page_px_h}" "xc:${BACKGROUND}" \
+    "${geometry[@]}" \
+    -geometry "+${x_px}+${y_px}" -composite \
+    "${gray_args[@]}" \
+    -units PixelsPerInch -density "$dpi" \
+    "${compress_args[@]}" "PDF:${out}"
+}
+
+# =============================================================================
+# Finalisation
+# =============================================================================
+
+shrink_to_limit() {
+  local pdf=$1 target=$2 attempt candidate size
+  local best_file="" best_size
+  best_size=$(stat -c %s "$pdf")
+
+  ((best_size > target)) || return 0
+
+  require_cmd gs
+  for attempt in ebook screen; do
+    note "compressing with Ghostscript /${attempt}"
+    candidate="${pdf%.pdf}.${attempt}.pdf"
+    if gs -q -o "$candidate" -sDEVICE=pdfwrite \
+      -dCompatibilityLevel=1.7 -dPDFSETTINGS="/${attempt}" \
+      -dNOPAUSE -dBATCH "$pdf" 2>/dev/null; then
+      size=$(stat -c %s "$candidate")
+      if ((size < best_size)); then
+        best_file=$candidate
+        best_size=$size
+      fi
+      if ((size <= target)); then
+        mv -f -- "$candidate" "$pdf"
+        return 0
+      fi
+    fi
+  done
+
+  # Keep the smallest attempt rather than the original if it at least helped.
+  [[ -n $best_file ]] && mv -f -- "$best_file" "$pdf"
+  warn "could not reach $(human_size "$target"); best effort is $(human_size "$best_size")"
+}
+
+apply_metadata() {
+  local pdf=$1 title=$2
+
+  command -v exiftool >/dev/null 2>&1 || {
+    note "exiftool not installed; leaving generated PDF metadata as-is"
+    return 0
+  }
+
+  exiftool -q -overwrite_original \
+    -Title="$title" \
+    -Author= -Creator= \
+    "$pdf" >/dev/null 2>&1 ||
+    warn "could not update PDF metadata"
+}
+
+finish_pdf() {
+  local merged="$work_dir/merged.pdf"
+
+  if ((${#page_files[@]} == 1)); then
+    cp -- "${page_files[0]}" "$merged"
+  else
+    # Ghostscript, not pdfunite: poppler writes an xref table that stricter
+    # tools reject, and pass-through keeps the JPEG streams byte-identical.
+    require_cmd gs
+    local -a filters=()
+    # /ebook and friends can silently switch to JPEG, so force Flate when the
+    # user asked for lossless pages.
+    if [[ $COMPRESS == zip ]]; then
+      filters=(-dAutoFilterColorImages=false -dColorImageFilter=/FlateEncode
+        -dAutoFilterGrayImages=false -dGrayImageFilter=/FlateEncode)
+    fi
+    gs -q -o "$merged" -sDEVICE=pdfwrite -dCompatibilityLevel=1.7 \
+      -dPassThroughJPEGImages=true "${filters[@]}" -dNOPAUSE -dBATCH \
+      "${page_files[@]}" || die "failed to assemble the PDF"
+  fi
+
+  [[ -n $MAX_SIZE ]] && shrink_to_limit "$merged" "$max_size_bytes"
+
+  apply_metadata "$merged" "${TITLE:-$(basename -- "${dest%.[Pp][Dd][Ff]}")}"
+
+  mv -f -- "$merged" "$dest"
+}
+
+# =============================================================================
+# Main
+# =============================================================================
+
+main() {
+  local total_pages=0 index=0 src prep page entry
+
+  collect_inputs "$@"
+
+  resolve_page
+
+  for entry in "${files[@]}"; do
+    [[ -f $entry ]] || die "not a file: $entry"
+    is_image_file "$entry" || die "not a supported image: $entry"
+    magick identify -format '%w\n' "$entry" >/dev/null 2>&1 ||
+      die "cannot read image: $entry"
+  done
+
+  apply_orientation "${files[0]}"
+  resolve_output
+
+  # Everything is assembled in a private temp directory, then moved into place,
+  # so an interrupted run never leaves a half-written PDF.
+  work_dir=$(mktemp -d "${TMPDIR:-/tmp}/img-pdf.XXXXXX") ||
+    die "cannot create a temporary directory"
+  trap 'find "$work_dir" -mindepth 1 -delete 2>/dev/null; rmdir "$work_dir" 2>/dev/null' EXIT
+
+  for src in "${files[@]}"; do
+    index=$((index + 1))
+    prep="$work_dir/prep-${index}.png"
+    page="$work_dir/page-$(printf '%04d' "$index").pdf"
+
+    prepare_image "$src" "$prep" || die "failed to read image: $src"
+    plan_page "$prep"
+
+    if ((DRY_RUN)); then
+      printf 'page %d: %s -> %.1f x %.1f mm at %.0f dpi\n' \
+        "$index" "$(basename -- "$src")" "$draw_w" "$draw_h" "$dpi"
+    else
+      build_page "$prep" "$page"
+      page_files+=("$page")
+      total_pages=$((total_pages + 1))
+      note "page ${index}: $(basename -- "$src") -> ${draw_w} x ${draw_h} mm at ${dpi} dpi"
+    fi
+  done
+
+  if ((DRY_RUN)); then
+    printf 'plan: %d page(s), %s x %s mm, output %s\n' \
+      "$index" "$page_w_mm" "$page_h_mm" "$dest" >&2
+    return 0
+  fi
+
+  finish_pdf
+
+  printf '%s: %d page(s), %s x %s mm, %s\n' \
+    "$dest" "$total_pages" "$page_w_mm" "$page_h_mm" \
+    "$(human_size "$(stat -c %s "$dest")")"
+}
+
+main "$@"
