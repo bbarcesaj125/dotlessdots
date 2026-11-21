@@ -17,13 +17,25 @@ set -euo pipefail
 # password prompt.
 #
 # waybar wires this up as a custom module: --status on a signal/interval, and
-# on-click runs the toggle. After an action the module is refreshed by
-# sending SIGRTMIN+8 to waybar, so the niri keybind updates the bar too.
+# on-click runs the toggle. The module is refreshed by sending SIGRTMIN+8 to
+# waybar after an action, so the niri keybind updates the bar too.
+#
+# Toggles are serialized with a lock: a second click while one is in flight is
+# ignored rather than racing the first. Every toggle appends one line to
+# $XDG_STATE_HOME/pia-toggle/log, so an intermittent failure has a decision
+# trail instead of guesswork.
 
 readonly UNIT="pia-pf.service"
 readonly PORT_FILE="/run/pia-pf/port"
 # Must match the "signal" setting of the waybar custom/pia module.
 readonly WAYBAR_SIGNAL=8
+# How long to wait for an in-flight start/stop before acting on what we see.
+readonly TRANSITION_TIMEOUT=25
+readonly STATE_DIR="${XDG_STATE_HOME:-$HOME/.local/state}/pia-toggle"
+readonly LOG_FILE="$STATE_DIR/log"
+readonly LOCK_FILE="${XDG_RUNTIME_DIR:-/tmp}/pia-toggle-${UID}.lock"
+readonly LOG_MAX_LINES=1000
+readonly LOG_KEEP_LINES=500
 
 DRY_RUN=false
 
@@ -44,9 +56,9 @@ usage() {
     cat <<'EOF'
 Usage: pia-toggle [--status] [--dry-run]
 
-Toggle the pia-pf VPN tunnel: stops pia-pf.service when it is active,
-starts it when it is inactive or failed, and does nothing while it is
-still switching state.
+Toggle the pia-pf VPN tunnel: stops pia-pf.service when it is active and
+starts it otherwise. If a start or stop is already in flight, waits for it
+to settle (up to 25s) and then toggles the resulting state.
 
 Options:
   --status   Print waybar JSON instead of toggling.
@@ -64,9 +76,65 @@ run() {
     [[ $DRY_RUN == true ]] || "$@"
 }
 
+# Append one diagnostic line. Never fails the caller: logging is best effort.
+log_line() {
+    [[ $DRY_RUN == true ]] && return 0
+    mkdir -p "$STATE_DIR" 2>/dev/null || return 0
+    printf '%s %s\n' "$(date -Is)" "$*" >>"$LOG_FILE" 2>/dev/null || return 0
+    prune_log
+    return 0
+}
+
+# Keep the log bounded; this runs only on toggles, so the cost is irrelevant.
+prune_log() {
+    local lines
+    lines=$(wc -l <"$LOG_FILE" 2>/dev/null) || return 0
+    ((lines > LOG_MAX_LINES)) || return 0
+    tail -n "$LOG_KEEP_LINES" "$LOG_FILE" >"$LOG_FILE.tmp" 2>/dev/null &&
+        mv -f "$LOG_FILE.tmp" "$LOG_FILE" 2>/dev/null
+    return 0
+}
+
+# Serialize toggles. A duplicate click exits quietly: acting on it after the
+# first one succeeds would toggle the tunnel straight back.
+acquire_lock() {
+    [[ $DRY_RUN == true ]] && return 0
+    require_cmd flock
+    exec 9>"$LOCK_FILE" || die "cannot open lock file: $LOCK_FILE"
+    flock -n 9 || {
+        log_line "busy: another toggle holds the lock"
+        exit 0
+    }
+}
+
 # Current unit state; empty string when the unit does not exist at all.
 unit_state() {
     systemctl is-active -- "$UNIT" 2>/dev/null || true
+}
+
+is_transitional() {
+    case "$1" in
+        activating | deactivating | reloading | maintaining) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+# Poll until the unit leaves a transitional state. Prints the last state seen,
+# returns non-zero if the timeout expires first.
+settled_state() {
+    local deadline=$((SECONDS + TRANSITION_TIMEOUT)) state
+    while :; do
+        state=$(unit_state)
+        is_transitional "$state" || {
+            printf '%s' "$state"
+            return 0
+        }
+        if ((SECONDS >= deadline)); then
+            printf '%s' "$state"
+            return 1
+        fi
+        sleep 0.5
+    done
 }
 
 forwarded_port() {
@@ -89,22 +157,34 @@ signal_waybar() {
 }
 
 start_or_stop() {
-    local state
+    local state action
+
+    acquire_lock
+
     state=$(unit_state)
+    log_line "toggle: initial state=$state"
 
-    case "$state" in
-        active)
-            run sudo -n /usr/bin/systemctl stop "$UNIT"
-            ;;
-        inactive | failed)
-            run sudo -n /usr/bin/systemctl start "$UNIT"
-            ;;
-        *)
-            # activating, deactivating, unknown, missing unit: not ours to fix.
-            log "$UNIT is '$state', not toggling"
-            ;;
-    esac
+    if is_transitional "$state"; then
+        state=$(settled_state) || log_line "toggle: still $state after ${TRANSITION_TIMEOUT}s"
+        log_line "toggle: settled state=$state"
+    fi
 
+    # Anything that is not running wants to be started; no state is a silent
+    # no-op, which is what made a click look ignored.
+    if [[ $state == active ]]; then
+        action="stop"
+    else
+        action="start"
+    fi
+
+    if ! run sudo -n /usr/bin/systemctl "$action" "$UNIT"; then
+        log_line "toggle: failed action=$action state=$state"
+        die "systemctl $action $UNIT failed"
+    fi
+
+    # Report the state the user will actually see in the bar.
+    state=$(settled_state) || log_line "toggle: still $state after ${TRANSITION_TIMEOUT}s"
+    log_line "toggle: done action=$action final_state=$state"
     signal_waybar
 }
 
@@ -117,10 +197,9 @@ status_json() {
     case "$state" in
         active)
             class="on"
-            # Nerd Font glyphs (JetBrainsMono NF is in waybar's font stack,
-            # so these render where fallback emoji may not): shield = up,
-            # spinner = switching, globe = down.
-            text=$'\uf132'
+            # Raw UTF-8 bytes rather than $'\uXXXX': the \u escape is
+            # locale-dependent and emits literal text in a non-UTF-8 locale.
+            text=$'\xef\x84\xb2' # shield
             tooltip=$'PIA tunnel: up\nClick to disconnect'
             port=$(forwarded_port)
             if [[ -n $port ]]; then
@@ -129,14 +208,14 @@ status_json() {
             ;;
         activating | deactivating)
             class="starting"
-            text=$'\uf110'
+            text=$'\xef\x84\x90' # spinner
             tooltip=$'PIA tunnel: switching state'
             ;;
         *)
             # inactive, failed, unknown or missing unit all read as "off";
             # a failed unit can be restarted by the next click anyway.
             class="off"
-            text=$'\uf0ac'
+            text=$'\xef\x82\xac' # globe
             tooltip=$'PIA tunnel: down\nClick to connect'
             ;;
     esac
