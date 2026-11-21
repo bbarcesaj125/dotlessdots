@@ -1,7 +1,7 @@
 ---
 name: commit
-description: Use when staging or committing changes in my bare-repo dotfiles
-  setup, including grouping changes and writing commit messages.
+description: Use when staging or committing changes in any of my
+  repositories, including grouping changes and writing commit messages.
 ---
 
 # Committing changes
@@ -9,7 +9,8 @@ description: Use when staging or committing changes in my bare-repo dotfiles
 ## Workflow
 
 1. Start from the working tree:
-   - Run `dotfiles status` and `dotfiles diff`.
+   - Dotlessdots (the bare repo): run `dotfiles status` and `dotfiles diff`.
+   - Any other repo: run `git status` and `git diff` in that repository.
    - List unrelated pre-existing changes and leave them alone.
 
 2. Group changes into logical, self-contained commits:
@@ -25,13 +26,15 @@ description: Use when staging or committing changes in my bare-repo dotfiles
      pass instead of re-reading diffs repeatedly.
 
 3. Stage explicit paths per group:
-   - Use `dotfiles add <path>...`.
+   - Dotlessdots: use `dotfiles add <path>...`.
+   - Other repos: use `git add <path>...` with explicit paths.
    - Never use `add -A` or `add -u`.
    - If one file mixes unrelated changes, commit it once rather than splitting
      hunks, unless the split is clean and clearly worthwhile.
 
 4. Review before committing:
-   - Run `dotfiles diff --cached` and show or summarize it.
+   - Run `dotfiles diff --cached` or `git diff --cached` and show or summarize
+     it.
    - Confirm only intended files are staged.
    - Check for secrets, credentials, tokens, private IPs, and machine-specific
      paths.
@@ -58,10 +61,13 @@ description: Use when staging or committing changes in my bare-repo dotfiles
   `Co-authored-by: commit-ghost <354659923+commit-ghost@users.noreply.github.com>`
 - Pass each paragraph as its own `-m` so the blank lines stay blank:
   `dotfiles commit -m "scope: summary" -m "Why the change was needed." -m "Co-authored-by: ..."`
+  or, in other repos, the same with `git commit`.
 - Keep the trailer last; GitHub only recognizes trailers at the end of the
   message.
 
 ## Pushing
 
-Pushing is governed by the Pushing rules in `AGENTS.md`. Never push as part of
-committing.
+Never push as part of committing. Dotlessdots follows the Pushing rules in
+`AGENTS.md` (`dotfiles push` standalone, explicit approval per push). Other
+repos follow the same principle: no push without explicit approval for that
+specific push.
