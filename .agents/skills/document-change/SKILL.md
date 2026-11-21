@@ -1,7 +1,7 @@
 name: document-change
 description: Use after landing a non-trivial script, configuration, or
   system change, to record it in the right place: the private system
-  changelog and machine-state docs in ~/Projects/pia-pf, or the public
+  changelog and machine-state docs in ~/Projects/machine-priv, or the public
   script index in dotlessdots. Also use when unsure where a change
   should be documented.
 ---
@@ -10,7 +10,9 @@ description: Use after landing a non-trivial script, configuration, or
 
 ## Where things live
 
-- Private repo: `~/Projects/pia-pf` (plain Git, remote on GitHub).
+- Private repo: `~/Projects/machine-priv` (plain Git, remote on GitHub).
+  It hosts sensitive and system-level documentation for the whole
+  machine, of which the pia tunnel setup is one part.
   - `CHANGELOG.md` — system changelog for what Git does not track
     (`/etc` files, sudoers, service states, cross-repo wiring).
   - `docs/machine-state.md` — current state of everything outside Git.
@@ -33,7 +35,7 @@ description: Use after landing a non-trivial script, configuration, or
 2. Verify facts before writing: run the relevant commands (file
    existence and modes, `systemctl is-enabled/is-active`,
    `sudo -l`). Never document from memory.
-3. For public text, scrub against `~/Projects/pia-pf/docs/public-scrub.md`.
+3. For public text, scrub against `~/Projects/machine-priv/docs/public-scrub.md`.
    If it cannot be read, write generic wording ("a systemd-managed VPN
    tunnel") and say so in the response. Commit subjects in the public
    repo follow the same scrub rules.
@@ -53,7 +55,7 @@ description: Use after landing a non-trivial script, configuration, or
    commit, including the new Verify command and a fresh
    "Last verified" date.
 6. Commit:
-   - pia-pf: plain `git add` / `git commit`. A code change and its
+   - machine-priv: plain `git add` / `git commit`. A code change and its
      changelog entry go in one commit; docs-only changes get their own.
    - dotlessdots: follow the `commit` skill (staging, message format,
      trailer). A README index update rides along with the script
