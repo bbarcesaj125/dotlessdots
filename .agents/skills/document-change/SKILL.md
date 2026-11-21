@@ -1,9 +1,9 @@
+---
 name: document-change
 description: Use after landing a non-trivial script, configuration, or
-  system change, to record it in the right place: the private system
-  changelog and machine-state docs in ~/Projects/machine-priv, or the public
-  script index in dotlessdots. Also use when unsure where a change
-  should be documented.
+  system change, to record it in the private system changelog, the
+  machine-state docs, or the public script index. Also use when unsure
+  where a change should be documented.
 ---
 
 # Documenting changes
