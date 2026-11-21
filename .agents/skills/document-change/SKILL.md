@@ -12,7 +12,7 @@ description: Use after landing a non-trivial script, configuration, or
 
 - Private repo: `~/Projects/machine-priv` (plain Git, remote on GitHub).
   It hosts sensitive and system-level documentation for the whole
-  machine, of which the pia tunnel setup is one part.
+  machine, across all setups that live here.
   - `CHANGELOG.md` — system changelog for what Git does not track
     (`/etc` files, sudoers, service states, cross-repo wiring).
   - `docs/machine-state.md` — current state of everything outside Git.
@@ -36,9 +36,9 @@ description: Use after landing a non-trivial script, configuration, or
    existence and modes, `systemctl is-enabled/is-active`,
    `sudo -l`). Never document from memory.
 3. For public text, scrub against `~/Projects/machine-priv/docs/public-scrub.md`.
-   If it cannot be read, write generic wording ("a systemd-managed VPN
-   tunnel") and say so in the response. Commit subjects in the public
-   repo follow the same scrub rules.
+   If it cannot be read, write generic wording without naming the
+   underlying setup, and say so in the response. Commit subjects in the
+   public repo follow the same scrub rules.
 4. Update the changelog using the entry template:
 
    ```
