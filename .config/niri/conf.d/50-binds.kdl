@@ -30,6 +30,10 @@ binds {
         spawn "keepass-toggle";
     }
 
+    Mod+Alt+V hotkey-overlay-title="VPN: toggle pia-pf" {
+        spawn "pia-toggle";
+    }
+
 
     // ───────────────────────────── Navigation (Focus) ───────────────────────
 

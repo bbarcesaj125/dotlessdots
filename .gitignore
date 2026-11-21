@@ -11,6 +11,7 @@
 !.local/bin/keepass-toggle
 !.local/bin/kpx-tidy
 !.local/bin/ovh-debian-bootstrap
+!.local/bin/pia-toggle
 !.local/bin/power-menu
 !.local/bin/rsyncvps
 !.local/bin/vid-download

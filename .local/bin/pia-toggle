@@ -1,0 +1,173 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# =============================================================================
+# pia-toggle — start/stop the pia-pf VPN tunnel
+# =============================================================================
+#
+# Day-to-day front end for the on-demand pia-pf.service unit:
+#
+#   pia-toggle            start the tunnel when down, stop it when up
+#   pia-toggle --status   waybar JSON (text/class/tooltip)
+#
+# State is read with `systemctl is-active`, which needs no root. Starting and
+# stopping go through `sudo -n`, allowed without a password by
+# /etc/sudoers.d/pia-pf for exactly this unit and nothing else. With -n, a
+# missing sudoers rule fails immediately instead of hanging waybar on a
+# password prompt.
+#
+# waybar wires this up as a custom module: --status on a signal/interval, and
+# on-click runs the toggle. After an action the module is refreshed by
+# sending SIGRTMIN+8 to waybar, so the niri keybind updates the bar too.
+
+readonly UNIT="pia-pf.service"
+readonly PORT_FILE="/run/pia-pf/port"
+# Must match the "signal" setting of the waybar custom/pia module.
+readonly WAYBAR_SIGNAL=8
+
+DRY_RUN=false
+
+# =============================================================================
+# Helpers
+# =============================================================================
+
+die() {
+    printf 'Error: %s\n' "$*" >&2
+    exit 1
+}
+
+log() {
+    printf '%s\n' "$*" >&2
+}
+
+usage() {
+    cat <<'EOF'
+Usage: pia-toggle [--status] [--dry-run]
+
+Toggle the pia-pf VPN tunnel: stops pia-pf.service when it is active,
+starts it when it is inactive or failed, and does nothing while it is
+still switching state.
+
+Options:
+  --status   Print waybar JSON instead of toggling.
+  --dry-run  Print the action without applying it.
+  -h, --help Show this help.
+EOF
+}
+
+require_cmd() {
+    command -v "$1" >/dev/null 2>&1 || die "missing required command: $1"
+}
+
+run() {
+    printf '%s\n' "$*" >&2
+    [[ $DRY_RUN == true ]] || "$@"
+}
+
+# Current unit state; empty string when the unit does not exist at all.
+unit_state() {
+    systemctl is-active -- "$UNIT" 2>/dev/null || true
+}
+
+forwarded_port() {
+    # The port file is written by the tunnel as root and may not be readable;
+    # an unreadable port is not an error, the tooltip just shows less.
+    [[ -r $PORT_FILE ]] || return 0
+    local port
+    port=$(tr -d '[:space:]' <"$PORT_FILE") || return 0
+    [[ $port =~ ^[0-9]+$ ]] || return 0
+    printf '%s' "$port"
+}
+
+# Ask waybar to re-run the module's exec right away.
+signal_waybar() {
+    if [[ $DRY_RUN == true ]]; then
+        log "would signal waybar (SIGRTMIN+$WAYBAR_SIGNAL)"
+        return 0
+    fi
+    pkill -RTMIN+$WAYBAR_SIGNAL waybar 2>/dev/null || true
+}
+
+start_or_stop() {
+    local state
+    state=$(unit_state)
+
+    case "$state" in
+        active)
+            run sudo -n /usr/bin/systemctl stop "$UNIT"
+            ;;
+        inactive | failed)
+            run sudo -n /usr/bin/systemctl start "$UNIT"
+            ;;
+        *)
+            # activating, deactivating, unknown, missing unit: not ours to fix.
+            log "$UNIT is '$state', not toggling"
+            ;;
+    esac
+
+    signal_waybar
+}
+
+status_json() {
+    require_cmd jq
+
+    local state class text tooltip port
+    state=$(unit_state)
+
+    case "$state" in
+        active)
+            class="on"
+            # Nerd Font glyphs (JetBrainsMono NF is in waybar's font stack,
+            # so these render where fallback emoji may not): shield = up,
+            # spinner = switching, globe = down.
+            text=$'\uf132'
+            tooltip=$'PIA tunnel: up\nClick to disconnect'
+            port=$(forwarded_port)
+            if [[ -n $port ]]; then
+                tooltip=$'PIA tunnel: up\nForwarded port: '"$port"$'\nClick to disconnect'
+            fi
+            ;;
+        activating | deactivating)
+            class="starting"
+            text=$'\uf110'
+            tooltip=$'PIA tunnel: switching state'
+            ;;
+        *)
+            # inactive, failed, unknown or missing unit all read as "off";
+            # a failed unit can be restarted by the next click anyway.
+            class="off"
+            text=$'\uf0ac'
+            tooltip=$'PIA tunnel: down\nClick to connect'
+            ;;
+    esac
+
+    # -c: waybar's JSON parser needs single-line output.
+    jq -cn --arg text "$text" --arg class "$class" --arg tooltip "$tooltip" \
+        '{text: $text, class: $class, tooltip: $tooltip}'
+}
+
+# =============================================================================
+# Main
+# =============================================================================
+
+main() {
+    local mode="toggle"
+
+    while (($# > 0)); do
+        case "$1" in
+            -h | --help) usage; exit 0 ;;
+            --status) mode="status" ;;
+            --dry-run) DRY_RUN=true ;;
+            *) usage >&2; die "unknown argument: $1" ;;
+        esac
+        shift
+    done
+
+    if [[ $mode == status ]]; then
+        status_json
+    else
+        start_or_stop
+    fi
+}
+
+main "$@"
