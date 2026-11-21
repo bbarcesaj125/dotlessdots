@@ -46,9 +46,16 @@ working tree and the `dotfiles` wrapper as the Git frontend.
 | `clipboard-menu` | Cliphist picker |
 | `waybar-weather` | Waybar weather module |
 | `waybar-disk` | Waybar disk usage module |
-| `vid-download` | Downloads a clipboard `yt-dlp` command |
-| `drivesync` | Rclone Google Drive sync |
+| `keepass-toggle` | Show / hide the KeePassXC window under niri |
+| `kpx-tidy` | Dedupe and reorganize a KeePassXC database after a LastPass import |
+| `pia-toggle` | Toggle a systemd-managed VPN tunnel from waybar or a keybind |
+| `gdrive-sync` | Rclone Google Drive sync |
 | `rsyncvps` | VPS backup helper |
+| `vid-download` | Downloads a clipboard `yt-dlp` command |
+| `iptv` | Small command-line IPTV client for public subscriptions |
+| `img-pdf` | Build a document-like PDF from images |
+| `ovh-debian-bootstrap` | Harden a fresh OVH Debian VPS |
+| `dotfiles` | Git wrapper for the bare repository |
 
 ## Local configuration
 

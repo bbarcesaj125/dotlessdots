@@ -18,6 +18,9 @@
 - Use `add-dotfile` when changing a tracked dotfile.
 - Use `write-shell-script` when writing or modifying a Bash script.
 - Use `commit` when staging or committing changes.
+- Use `document-change` after non-trivial script or system changes;
+  it routes changelog entries to the private or public repo and
+  scrubs public text against the private word list.
 - Load the relevant skill before starting; its task-specific workflow
   complements these global rules.
 
