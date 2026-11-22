@@ -4,9 +4,10 @@ input {
     keyboard {
         xkb {
             // Group 1: German, group 2: Arabic transliteration on QWERTZ
-            // positions, group 3: the same on legacy AZERTY positions.
-            layout "de,ar_translit,ar_translit"
-            variant ",german,azerty"
+            // positions. The legacy AZERTY section stays in ar_translit and
+            // can be previewed with: keyboard-layout-help --section azerty
+            layout "de,ar_translit"
+            variant ",german"
             options "compose:prsc"
         }
 

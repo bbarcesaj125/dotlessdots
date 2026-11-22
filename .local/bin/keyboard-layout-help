@@ -66,15 +66,20 @@ def run(command):
 # Keymap reading and parsing
 # =============================================================================
 
-def read_keymap():
-    """Return the live keymap text, or compile one when there is no compositor."""
+def require_xkbcli():
     if not shutil.which("xkbcli"):
         die("missing xkbcli (Arch package: libxkbcommon)")
 
+
+def read_live_keymap():
     proc = run(["xkbcli", "dump-keymap-wayland"])
     if proc and proc.returncode == 0 and "xkb_keymap" in proc.stdout:
         return proc.stdout
+    return None
 
+
+def compile_keymap():
+    """Compile a reference keymap that contains every section of the file."""
     proc = run(
         [
             "xkbcli",
@@ -87,8 +92,11 @@ def read_keymap():
     )
     if proc and proc.returncode == 0 and "xkb_keymap" in proc.stdout:
         return proc.stdout
+    return None
 
-    die("could not read the keymap (is ~/.config/xkb/symbols/ar_translit installed?)")
+
+def has_group(keymap, group):
+    return any(group in groups for groups in keymap.values())
 
 
 KEY_BLOCK = re.compile(r"key\s+<([A-Za-z0-9_]+)>\s*\{(.*?)\}\s*;", re.S)
@@ -222,9 +230,11 @@ def key_content(keymap, code, group, to_text):
 # Text output
 # =============================================================================
 
-def print_layout(keymap, section, group, german_active, to_text):
+def print_layout(keymap, section, group, german_active, loaded, to_text):
     title = f"Arabic (Transliteration) - {SECTION_TITLES[section]}"
-    if german_active:
+    if not loaded:
+        title += "   [not in the switch cycle]"
+    elif german_active:
         title += "   [German active: Mod+Shift+Space to switch]"
     print(title)
     print("base | Shift in parentheses | AltGr returns the Latin key")
@@ -311,7 +321,7 @@ def make_key(code, latin, base, shift):
     return box
 
 
-def show_overlay(keymap, section, group, german_active, to_text, stay):
+def show_overlay(keymap, section, group, german_active, loaded, to_text, stay):
     import gi
 
     gi.require_version("Gtk", "4.0")
@@ -357,7 +367,9 @@ def show_overlay(keymap, section, group, german_active, to_text, stay):
             root.append(heading)
 
             note = "Esc or click to close · Shift gives the small letter · AltGr gives the Latin key"
-            if german_active:
+            if not loaded:
+                note = "Legacy AZERTY section — not in the switch cycle · " + note
+            elif german_active:
                 note = "German is active — press Mod+Shift+Space to switch · " + note
             hint = Gtk.Label(label=note)
             hint.add_css_class("hint")
@@ -446,15 +458,30 @@ def main(argv):
     )
     args = parser.parse_args(argv)
 
-    keymap = parse_keymap(read_keymap())
+    require_xkbcli()
+    text = read_live_keymap() or compile_keymap()
+    if not text:
+        die("could not read the keymap (is ~/.config/xkb/symbols/ar_translit installed?)")
+
+    keymap = parse_keymap(text)
     if not keymap:
         die("could not parse the keymap")
 
     section, group, german_active = choose_section(args)
+
+    # A section that is not loaded as a group (legacy AZERTY) is drawn from a
+    # freshly compiled reference keymap instead of the compositor's.
+    loaded = has_group(keymap, group)
+    if not loaded:
+        reference = compile_keymap()
+        if reference is None:
+            die(f"section '{section}' is not loaded and could not be compiled")
+        keymap = parse_keymap(reference)
+
     to_text = KeysymText()
 
     if args.print_mode:
-        print_layout(keymap, section, group, german_active, to_text)
+        print_layout(keymap, section, group, german_active, loaded, to_text)
         return 0
 
     try:
@@ -462,7 +489,7 @@ def main(argv):
     except ImportError:
         die("PyGObject is not available (Arch packages: gtk4 python-gobject)")
 
-    show_overlay(keymap, section, group, german_active, to_text, args.stay)
+    show_overlay(keymap, section, group, german_active, loaded, to_text, args.stay)
     return 0
 
 
