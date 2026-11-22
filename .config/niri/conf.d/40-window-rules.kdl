@@ -20,6 +20,12 @@ window-rule {
     open-maximized true
 }
 
+// Keyboard layout overlay: keep the help window floating.
+window-rule {
+    match title="Keyboard Layout"
+    open-floating true
+}
+
 // KeePassXC works better as a floating dialog.
 window-rule {
     match app-id="org.keepassxc.KeePassXC"

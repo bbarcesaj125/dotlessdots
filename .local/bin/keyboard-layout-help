@@ -1,0 +1,470 @@
+#!/usr/bin/env python3
+"""Show the Arabic transliteration keymap as a floating keycap overlay.
+
+Reads the live XKB keymap from the compositor, so the diagram always matches
+what is actually configured. Falls back to compiling the keymap directly when
+no Wayland session is available.
+
+Usage:
+    keyboard-layout-help [-h] [--section {german,azerty}] [--group N]
+                         [--print] [--stay]
+"""
+
+import argparse
+import ctypes
+import re
+import shutil
+import subprocess
+import sys
+
+# =============================================================================
+# Layout description
+# =============================================================================
+
+SECTION_GROUPS = {"german": 2, "azerty": 3}
+GROUP_SECTIONS = {2: "german", 3: "azerty"}
+SECTION_TITLES = {"german": "QWERTZ", "azerty": "AZERTY"}
+
+ROWS = [
+    ["TLDE"] + [f"AE{i:02d}" for i in range(1, 13)],
+    [f"AD{i:02d}" for i in range(1, 13)],
+    [f"AC{i:02d}" for i in range(1, 12)],
+    ["LSGT"] + [f"AB{i:02d}" for i in range(1, 11)] + ["BKSL"],
+]
+
+ROW_INDENTS = [0, 0, 14, 26]
+NARROW_KEYS = {"TLDE", "LSGT"}
+
+# Dead keys have no printable character of their own; show their accent instead.
+DEAD_KEY_LABELS = {
+    "dead_circumflex": "^",
+    "dead_acute": "´",
+    "dead_grave": "`",
+    "dead_diaeresis": "¨",
+    "dead_tilde": "~",
+}
+
+# =============================================================================
+# Helpers
+# =============================================================================
+
+def die(message):
+    print(f"Error: {message}", file=sys.stderr)
+    sys.exit(1)
+
+
+def run(command):
+    try:
+        return subprocess.run(
+            command, capture_output=True, text=True, timeout=10, check=False
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+# =============================================================================
+# Keymap reading and parsing
+# =============================================================================
+
+def read_keymap():
+    """Return the live keymap text, or compile one when there is no compositor."""
+    if not shutil.which("xkbcli"):
+        die("missing xkbcli (Arch package: libxkbcommon)")
+
+    proc = run(["xkbcli", "dump-keymap-wayland"])
+    if proc and proc.returncode == 0 and "xkb_keymap" in proc.stdout:
+        return proc.stdout
+
+    proc = run(
+        [
+            "xkbcli",
+            "compile-keymap",
+            "--layout",
+            "de,ar_translit,ar_translit",
+            "--variant",
+            ",german,azerty",
+        ]
+    )
+    if proc and proc.returncode == 0 and "xkb_keymap" in proc.stdout:
+        return proc.stdout
+
+    die("could not read the keymap (is ~/.config/xkb/symbols/ar_translit installed?)")
+
+
+KEY_BLOCK = re.compile(r"key\s+<([A-Za-z0-9_]+)>\s*\{(.*?)\}\s*;", re.S)
+GROUP_ENTRY = re.compile(r"symbols\[(\d+)\]\s*=\s*\[(.*?)\]", re.S)
+PLAIN_ENTRY = re.compile(r"\[(.*?)\]", re.S)
+
+
+def split_symbols(body):
+    return [part.strip() for part in body.split(",")]
+
+
+def parse_keymap(text):
+    """Map keycode -> {group: [keysym, ...]}."""
+    keymap = {}
+    for block in KEY_BLOCK.finditer(text):
+        code, body = block.group(1), block.group(2)
+        groups = {
+            int(match.group(1)): split_symbols(match.group(2))
+            for match in GROUP_ENTRY.finditer(body)
+        }
+        if not groups:
+            plain = PLAIN_ENTRY.search(body)
+            if plain:
+                groups[1] = split_symbols(plain.group(1))
+        keymap[code] = groups
+    return keymap
+
+
+class KeysymText:
+    """Resolve XKB keysym names to printable text via libxkbcommon."""
+
+    def __init__(self):
+        self.lib = None
+        self.cache = {}
+        try:
+            lib = ctypes.CDLL("libxkbcommon.so.0")
+            lib.xkb_keysym_from_name.restype = ctypes.c_uint32
+            lib.xkb_keysym_from_name.argtypes = [ctypes.c_char_p, ctypes.c_int]
+            lib.xkb_keysym_to_utf8.restype = ctypes.c_int
+            lib.xkb_keysym_to_utf8.argtypes = [
+                ctypes.c_uint32,
+                ctypes.c_char_p,
+                ctypes.c_size_t,
+            ]
+            self.lib = lib
+        except OSError:
+            pass
+
+    def __call__(self, name):
+        if not name:
+            return ""
+        if name in self.cache:
+            return self.cache[name]
+
+        text = DEAD_KEY_LABELS.get(name, "")
+        if not text and self.lib is not None:
+            keysym = self.lib.xkb_keysym_from_name(name.encode(), 0)
+            if keysym:
+                buffer = ctypes.create_string_buffer(32)
+                length = self.lib.xkb_keysym_to_utf8(keysym, buffer, len(buffer))
+                if length > 1:
+                    text = buffer.value.decode("utf-8", "replace")
+        if not text and len(name) == 1:
+            text = name
+
+        self.cache[name] = text
+        return text
+
+
+# =============================================================================
+# State and selection
+# =============================================================================
+
+def active_niri_index():
+    """Return the active layout index as reported by niri, or None."""
+    proc = run(["niri", "msg", "keyboard-layouts"])
+    if not proc or proc.returncode != 0:
+        return None
+    for line in proc.stdout.splitlines():
+        match = re.match(r"\s*\*\s*(\d+)", line)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def choose_section(args):
+    """Return (section, group, german_active)."""
+    active = active_niri_index()
+
+    if args.group is not None:
+        return GROUP_SECTIONS.get(args.group, "german"), args.group, active == 0
+    if args.section is not None:
+        return args.section, SECTION_GROUPS[args.section], active == 0
+    if active in (1, 2):
+        group = active + 1
+        return GROUP_SECTIONS[group], group, False
+    return "german", SECTION_GROUPS["german"], active == 0
+
+
+def key_symbols(keymap, code, group):
+    groups = keymap.get(code, {})
+    return groups.get(group) or groups.get(1) or []
+
+
+def latin_label(keymap, code, group, to_text):
+    """The Latin key legend, preferring the legend printed on that physical key."""
+    own = key_symbols(keymap, code, group)
+
+    def printable_ascii(text):
+        return len(text) == 1 and text.isascii() and text.isprintable()
+
+    if own and printable_ascii(to_text(own[0])):
+        return to_text(own[0])
+    if len(own) > 2 and to_text(own[2]).isascii() and to_text(own[2]).isalpha():
+        return to_text(own[2])
+
+    fallback = key_symbols(keymap, code, 1)
+    return to_text(fallback[0]) if fallback else ""
+
+
+def key_content(keymap, code, group, to_text):
+    symbols = key_symbols(keymap, code, group)
+    base = to_text(symbols[0]) if symbols else ""
+    shift = to_text(symbols[1]) if len(symbols) > 1 else ""
+    if shift == base:
+        shift = ""
+    return latin_label(keymap, code, group, to_text), base, shift
+
+
+# =============================================================================
+# Text output
+# =============================================================================
+
+def print_layout(keymap, section, group, german_active, to_text):
+    title = f"Arabic (Transliteration) - {SECTION_TITLES[section]}"
+    if german_active:
+        title += "   [German active: Mod+Shift+Space to switch]"
+    print(title)
+    print("base | Shift in parentheses | AltGr returns the Latin key")
+    print()
+    for row in ROWS:
+        cells = []
+        for code in row:
+            latin, base, shift = key_content(keymap, code, group, to_text)
+            cell = f"{latin}:{base or '.'}"
+            if shift:
+                cell += f" ({shift})"
+            cells.append(cell)
+        print("  ".join(cells))
+
+
+# =============================================================================
+# GTK overlay
+# =============================================================================
+
+CSS = """
+window, .root {
+    background-color: #1d1f21;
+}
+.key {
+    background-color: #2b2e33;
+    border: 1px solid #3c3f44;
+    border-radius: 6px;
+    padding: 4px 6px;
+}
+.latin {
+    color: #75715e;
+    font-family: monospace;
+    font-size: 10px;
+}
+.base {
+    color: #f8f8f2;
+    font-size: 23px;
+}
+.shift {
+    color: #66d9ef;
+    font-size: 14px;
+}
+.title {
+    color: #f8f8f2;
+    font-size: 16px;
+    font-weight: bold;
+}
+.hint {
+    color: #75715e;
+    font-size: 11px;
+}
+"""
+
+
+def make_key(code, latin, base, shift):
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    from gi.repository import Gtk
+
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=0)
+    box.add_css_class("key")
+    width = 58 if code in NARROW_KEYS else 68
+    box.set_size_request(width, 72)
+
+    top = Gtk.Label(label=latin)
+    top.add_css_class("latin")
+    top.set_xalign(0)
+    top.set_visible(bool(latin) and latin != base)
+    box.append(top)
+
+    main = Gtk.Label(label=base or "·")
+    main.add_css_class("base")
+    main.set_vexpand(True)
+    main.set_visible(bool(base))
+    box.append(main)
+
+    bottom = Gtk.Label(label=shift)
+    bottom.add_css_class("shift")
+    bottom.set_xalign(1)
+    bottom.set_visible(bool(shift))
+    box.append(bottom)
+
+    return box
+
+
+def show_overlay(keymap, section, group, german_active, to_text, stay):
+    import gi
+
+    gi.require_version("Gtk", "4.0")
+    gi.require_version("Gdk", "4.0")
+    from gi.repository import Gdk, GLib, Gtk
+
+    def arm(state):
+        state["armed"] = True
+        return False
+
+    class HelpApplication(Gtk.Application):
+        def __init__(self):
+            super().__init__(application_id="org.yusuf.KeyboardLayoutHelp")
+
+        def do_activate(self):
+            window = Gtk.ApplicationWindow(application=self, title="Keyboard Layout")
+            window.set_decorated(False)
+            window.set_default_size(1180, 600)
+            window.add_css_class("root")
+
+            provider = Gtk.CssProvider()
+            if hasattr(provider, "load_from_string"):
+                provider.load_from_string(CSS)
+            else:
+                provider.load_from_data(CSS.encode())
+            Gtk.StyleContext.add_provider_for_display(
+                Gdk.Display.get_default(),
+                provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+            )
+
+            root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+            root.set_margin_top(16)
+            root.set_margin_bottom(16)
+            root.set_margin_start(18)
+            root.set_margin_end(18)
+            window.set_child(root)
+
+            title = f"Arabic (Transliteration) · {SECTION_TITLES[section]}"
+            heading = Gtk.Label(label=title)
+            heading.add_css_class("title")
+            heading.set_xalign(0)
+            root.append(heading)
+
+            note = "Esc or click to close · Shift gives the small letter · AltGr gives the Latin key"
+            if german_active:
+                note = "German is active — press Mod+Shift+Space to switch · " + note
+            hint = Gtk.Label(label=note)
+            hint.add_css_class("hint")
+            hint.set_xalign(0)
+            root.append(hint)
+
+            board = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+            board.set_valign(Gtk.Align.CENTER)
+            board.set_vexpand(True)
+            root.append(board)
+
+            for row_index, row in enumerate(ROWS):
+                line = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+                line.set_margin_start(ROW_INDENTS[row_index])
+                line.set_halign(Gtk.Align.CENTER)
+                for code in row:
+                    latin, base, shift = key_content(keymap, code, group, to_text)
+                    line.append(make_key(code, latin, base, shift))
+                board.append(line)
+
+            click = Gtk.GestureClick()
+            click.connect("pressed", lambda *_: window.close())
+            window.add_controller(click)
+
+            def close_window(*_args):
+                window.close()
+                return True
+
+            shortcut = Gtk.ShortcutController()
+            shortcut.add_shortcut(
+                Gtk.Shortcut(
+                    trigger=Gtk.ShortcutTrigger.parse_string("Escape"),
+                    action=Gtk.CallbackAction.new(close_window),
+                )
+            )
+            window.add_controller(shortcut)
+
+            if not stay:
+                state = {"armed": False, "active": False}
+
+                def on_active(widget, _param):
+                    if widget.get_property("is-active"):
+                        state["active"] = True
+                    elif state["active"] and state["armed"]:
+                        widget.close()
+
+                window.connect("notify::is-active", on_active)
+                GLib.timeout_add(400, arm, state)
+
+            window.present()
+
+    app = HelpApplication()
+    app.run([sys.argv[0]])
+
+
+# =============================================================================
+# Main
+# =============================================================================
+
+def main(argv):
+    parser = argparse.ArgumentParser(
+        prog="keyboard-layout-help",
+        description="Show the Arabic transliteration keymap as a keycap overlay.",
+    )
+    parser.add_argument(
+        "--section",
+        choices=sorted(SECTION_GROUPS),
+        help="layout section to draw (default: follow the active niri group)",
+    )
+    parser.add_argument(
+        "--group",
+        type=int,
+        choices=[1, 2, 3],
+        help="XKB group to draw (1=German, 2=QWERTZ Arabic, 3=AZERTY Arabic)",
+    )
+    parser.add_argument(
+        "--print",
+        dest="print_mode",
+        action="store_true",
+        help="print a text table instead of opening a window",
+    )
+    parser.add_argument(
+        "--stay",
+        action="store_true",
+        help="keep the overlay open when it loses focus",
+    )
+    args = parser.parse_args(argv)
+
+    keymap = parse_keymap(read_keymap())
+    if not keymap:
+        die("could not parse the keymap")
+
+    section, group, german_active = choose_section(args)
+    to_text = KeysymText()
+
+    if args.print_mode:
+        print_layout(keymap, section, group, german_active, to_text)
+        return 0
+
+    try:
+        import gi  # noqa: F401
+    except ImportError:
+        die("PyGObject is not available (Arch packages: gtk4 python-gobject)")
+
+    show_overlay(keymap, section, group, german_active, to_text, args.stay)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

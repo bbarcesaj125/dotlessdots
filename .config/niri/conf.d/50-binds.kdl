@@ -35,6 +35,19 @@ binds {
     }
 
 
+    // ───────────────────────────── Keyboard Layout ──────────────────────────
+
+    // Cycles German -> Arabic (QWERTZ) -> Arabic (AZERTY).
+    Mod+Shift+Space hotkey-overlay-title="Keyboard Layout: next" {
+        switch-layout "next";
+    }
+
+    // Shows the current layout as a keycap diagram.
+    Mod+Alt+Space hotkey-overlay-title="Keyboard Layout: show help" {
+        spawn "keyboard-layout-help";
+    }
+
+
     // ───────────────────────────── Navigation (Focus) ───────────────────────
 
     // Vim Keys

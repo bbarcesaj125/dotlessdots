@@ -31,6 +31,7 @@ working tree and the `dotfiles` wrapper as the Git frontend.
 | `.config/niri/config.kdl` | Niri entrypoint; includes `conf.d/` |
 | `.config/niri/conf.d/` | Input, outputs, layout, binds, startup, window rules |
 | `.config/waybar/` | Waybar configuration and style |
+| `.config/xkb/symbols/` | Custom XKB layouts (Arabic transliteration) |
 | `.config/systemd/user/` | User units and timers |
 | `.local/bin/` | Custom executables |
 | `.agents/skills/` | Agent skills |
@@ -47,6 +48,7 @@ working tree and the `dotfiles` wrapper as the Git frontend.
 | `waybar-weather` | Waybar weather module |
 | `waybar-disk` | Waybar disk usage module |
 | `keepass-toggle` | Show / hide the KeePassXC window under niri |
+| `keyboard-layout-help` | Keycap overlay for the Arabic transliteration layout |
 | `kpx-tidy` | Dedupe and reorganize a KeePassXC database after a LastPass import |
 | `pia-toggle` | Toggle a systemd-managed VPN tunnel from waybar or a keybind |
 | `gdrive-sync` | Rclone Google Drive sync |

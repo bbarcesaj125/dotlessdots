@@ -3,9 +3,15 @@
 input {
     keyboard {
         xkb {
-            layout "de"
+            // Group 1: German, group 2: Arabic transliteration on QWERTZ
+            // positions, group 3: the same on legacy AZERTY positions.
+            layout "de,ar_translit,ar_translit"
+            variant ",german,azerty"
             options "compose:prsc"
         }
+
+        // Keep the layout session-wide instead of per-window.
+        track-layout "global"
 
         numlock
     }

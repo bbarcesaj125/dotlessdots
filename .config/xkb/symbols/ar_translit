@@ -1,0 +1,152 @@
+// Arabic transliteration layout.
+//
+// A phonetic transliteration: the Latin key that carries a letter on the
+// host layout types the Arabic letter with the same sound, e.g. s -> س and
+// Shift+s -> ص. AltGr always falls back to the Latin key, so ASCII stays
+// reachable without leaving the Arabic group.
+//
+// Sections:
+//   german  (default)  QWERTZ positions
+//   azerty             legacy French positions
+//
+// Used as a second group, e.g. in niri:
+//   layout "de,ar_translit"
+//   variant ",german"
+//
+// Levels: base / Shift / AltGr / Shift+AltGr.
+
+// -----------------------------------------------------------------------------
+// QWERTZ
+// -----------------------------------------------------------------------------
+
+default partial alphanumeric_keys
+xkb_symbols "german" {
+
+    name[Group1]= "Arabic (Transliteration)";
+
+    // Digits: ASCII on base, Arabic-Indic on Shift.
+
+    key <AE01> { [ 1, Arabic_1, exclam, onesuperior ] };
+    key <AE02> { [ 2, Arabic_2, quotedbl, twosuperior ] };
+    key <AE03> { [ 3, Arabic_3, section, threesuperior ] };
+    key <AE04> { [ 4, Arabic_4, dollar, onequarter ] };
+    key <AE05> { [ 5, Arabic_5, percent, onehalf ] };
+    key <AE06> { [ 6, Arabic_6, ampersand, notsign ] };
+    key <AE07> { [ 7, Arabic_7, slash, braceleft ] };
+    key <AE08> { [ 8, Arabic_8, parenleft, bracketleft ] };
+    key <AE09> { [ 9, Arabic_9, parenright, bracketright ] };
+    key <AE10> { [ 0, Arabic_0, equal, braceright ] };
+    key <AE11> { [ Arabic_sukun, Arabic_sukun, question, backslash ] };
+    key <AE12> { [ Arabic_percent, U066B, dead_acute, grave ] };
+
+    key <TLDE> { [ Arabic_thal, Arabic_shadda, dead_circumflex, degree ] };
+
+    // QWERTZ top row: q w e r t z u i o p ü +
+
+    key <AD01> { [ Arabic_qaf, Arabic_qaf, q, Q ] };
+    key <AD02> { [ Arabic_waw, Arabic_hamzaonwaw, w, W ] };
+    key <AD03> { [ Arabic_ain, Arabic_ain, e, E ] };
+    key <AD04> { [ Arabic_ra, Arabic_ra, r, R ] };
+    key <AD05> { [ Arabic_teh, Arabic_tah, t, T ] };
+    key <AD06> { [ Arabic_zain, Arabic_zah, z, Z ] };
+    key <AD07> { [ Arabic_kasra, Arabic_kasratan, u, U ] };
+    key <AD08> { [ Arabic_fatha, Arabic_fathatan, i, I ] };
+    key <AD09> { [ Arabic_damma, Arabic_dammatan, o, O ] };
+    key <AD10> { [ Arabic_tehmarbuta, Arabic_tehmarbuta, p, P ] };
+    key <AD11> { [ Arabic_hamzaunderalef, Arabic_maddaonalef, udiaeresis, Udiaeresis ] };
+    key <AD12> { [ Arabic_sheen, Arabic_sheen, plus, asterisk ] };
+
+    // QWERTZ home row: a s d f g h j k l ö ä
+
+    key <AC01> { [ Arabic_alef, Arabic_hamzaonalef, a, A ] };
+    key <AC02> { [ Arabic_seen, Arabic_sad, s, S ] };
+    key <AC03> { [ Arabic_dal, Arabic_dad, d, D ] };
+    key <AC04> { [ Arabic_feh, Arabic_feh, f, F ] };
+    key <AC05> { [ Arabic_ghain, Arabic_ghain, g, G ] };
+    key <AC06> { [ Arabic_ha, Arabic_sukun, h, H ] };
+    key <AC07> { [ Arabic_jeem, Arabic_jeem, j, J ] };
+    key <AC08> { [ Arabic_kaf, Arabic_kaf, k, K ] };
+    key <AC09> { [ Arabic_lam, Arabic_lam, l, L ] };
+    key <AC10> { [ Arabic_shadda, Arabic_shadda, odiaeresis, Odiaeresis ] };
+    key <AC11> { [ Arabic_theh, Arabic_theh, adiaeresis, Adiaeresis ] };
+
+    // QWERTZ bottom row: y x c v b n m , . -
+
+    key <LSGT> { [ less, greater, bar ] };
+    key <AB01> { [ Arabic_yeh, Arabic_hamzaonyeh, y, Y ] };
+    key <AB02> { [ Arabic_khah, Arabic_khah, x, X ] };
+    key <AB03> { [ Arabic_hah, Arabic_hah, c, C ] };
+    key <AB04> { [ Arabic_alefmaksura, Arabic_tatweel, v, V ] };
+    key <AB05> { [ Arabic_beh, Arabic_beh, b, B ] };
+    key <AB06> { [ Arabic_noon, Arabic_noon, n, N ] };
+    key <AB07> { [ Arabic_meem, Arabic_meem, m, M ] };
+    key <AB08> { [ Arabic_comma, Arabic_question_mark, comma, semicolon ] };
+    key <AB09> { [ period, Arabic_semicolon, period, colon ] };
+    key <AB10> { [ minus, underscore, minus, underscore ] };
+    key <BKSL> { [ Arabic_hamza, apostrophe, numbersign, rightsinglequotemark ] };
+};
+
+// -----------------------------------------------------------------------------
+// AZERTY (legacy)
+// -----------------------------------------------------------------------------
+
+partial alphanumeric_keys
+xkb_symbols "azerty" {
+
+    name[Group1]= "Arabic (Transliteration, AZERTY)";
+
+    // AZERTY digits: symbol on base, ASCII digit on Shift, Arabic-Indic on AltGr.
+
+    key <AE01> { [ ampersand, 1, Arabic_1, dead_acute ] };
+    key <AE02> { [ eacute, 2, Arabic_2, asciitilde ] };
+    key <AE03> { [ quotedbl, 3, Arabic_3, numbersign ] };
+    key <AE04> { [ apostrophe, 4, Arabic_4, braceleft ] };
+    key <AE05> { [ parenleft, 5, Arabic_5, bracketleft ] };
+    key <AE06> { [ minus, 6, Arabic_6, bar ] };
+    key <AE07> { [ egrave, 7, Arabic_7, dead_grave ] };
+    key <AE08> { [ underscore, 8, Arabic_8, backslash ] };
+    key <AE09> { [ ccedilla, 9, Arabic_9, asciicircum ] };
+    key <AE10> { [ agrave, 0, Arabic_0, at ] };
+    key <AE11> { [ parenright, degree, bracketright, ydiaeresis ] };
+    key <AE12> { [ equal, plus, braceright, plusminus ] };
+
+    key <TLDE> { [ Arabic_thal, Arabic_shadda, leftdoublequotemark, rightdoublequotemark ] };
+
+    key <AD01> { [ Arabic_alef, Arabic_hamzaonalef, a, A ] };
+    key <AD02> { [ Arabic_zain, Arabic_zah, z, Z ] };
+    key <AD03> { [ Arabic_ain, Arabic_ain, e, E ] };
+    key <AD04> { [ Arabic_ra, Arabic_ra, r, R ] };
+    key <AD05> { [ Arabic_teh, Arabic_tah, t, T ] };
+    key <AD06> { [ Arabic_yeh, Arabic_hamzaonyeh, y, Y ] };
+    key <AD07> { [ Arabic_kasra, Arabic_kasratan, u, U ] };
+    key <AD08> { [ Arabic_fatha, Arabic_fathatan, i, I ] };
+    key <AD09> { [ Arabic_damma, Arabic_dammatan, o, O ] };
+    key <AD10> { [ Arabic_tehmarbuta, Arabic_tehmarbuta, p, P ] };
+    key <AD11> { [ Arabic_hamzaunderalef, Arabic_maddaonalef, dollar, sterling ] };
+    key <AD12> { [ Arabic_sheen, Arabic_sheen, plus, asterisk ] };
+
+    key <AC01> { [ Arabic_qaf, Arabic_qaf, q, Q ] };
+    key <AC02> { [ Arabic_seen, Arabic_sad, s, S ] };
+    key <AC03> { [ Arabic_dal, Arabic_dad, d, D ] };
+    key <AC04> { [ Arabic_feh, Arabic_fathatan, f, F ] };
+    key <AC05> { [ Arabic_ghain, Arabic_ghain, g, G ] };
+    key <AC06> { [ Arabic_ha, Arabic_sukun, h, H ] };
+    key <AC07> { [ Arabic_jeem, Arabic_jeem, j, J ] };
+    key <AC08> { [ Arabic_kaf, Arabic_kasratan, k, K ] };
+    key <AC09> { [ Arabic_lam, Arabic_lam, l, L ] };
+    key <AC10> { [ Arabic_meem, Arabic_meem, m, M ] };
+    key <AC11> { [ Arabic_theh, percent, ugrave, Ugrave ] };
+
+    key <LSGT> { [ less, greater, bar ] };
+    key <AB01> { [ Arabic_waw, Arabic_hamzaonwaw, w, W ] };
+    key <AB02> { [ Arabic_khah, Arabic_khah, x, X ] };
+    key <AB03> { [ Arabic_hah, Arabic_hah, c, C ] };
+    key <AB04> { [ Arabic_alefmaksura, Arabic_tatweel, v, V ] };
+    key <AB05> { [ Arabic_beh, Arabic_beh, b, B ] };
+    key <AB06> { [ Arabic_noon, Arabic_dammatan, n, N ] };
+    key <AB07> { [ Arabic_comma, Arabic_question_mark, comma, question ] };
+    key <AB08> { [ period, Arabic_semicolon, semicolon, period ] };
+    key <AB09> { [ colon, slash, division, periodcentered ] };
+    key <AB10> { [ exclam, section, exclamdown ] };
+    key <BKSL> { [ Arabic_hamza, asterisk, mu, yen ] };
+};
